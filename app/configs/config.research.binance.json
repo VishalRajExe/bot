@@ -1,0 +1,62 @@
+{
+  "_comment": "UnboundBot research/backtest config #2. Public Binance BTC/USDT daily (full history). USDT used as USD proxy for research only. dry_run local simulation, no broker orders.",
+  "trading_mode": "spot",
+  "margin_mode": "",
+  "max_open_trades": 1,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.99,
+  "available_capital": 10000,
+  "dry_run": true,
+  "dry_run_wallet": 10000,
+  "timeframe": "1d",
+  "dataformat_ohlcv": "feather",
+  "cancel_open_orders_on_exit": false,
+  "strategy": "BtcZScore",
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "ccxt_config": {},
+    "ccxt_async_config": {},
+    "pair_whitelist": [
+      "BTC/USDT"
+    ],
+    "pair_blacklist": []
+  },
+  "pairlists": [
+    { "method": "StaticPairList" }
+  ],
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": false,
+    "price_last_balance": 0.0
+  },
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": false
+  },
+  "order_types": {
+    "entry": "market",
+    "exit": "market",
+    "emergency_exit": "market",
+    "stoploss": "market",
+    "stoploss_on_exchange": false
+  },
+  "unfilledtimeout": {
+    "entry": 30,
+    "exit": 30,
+    "unit": "minutes"
+  },
+  "telegram": {
+    "enabled": false,
+    "token": "",
+    "chat_id": ""
+  },
+  "bot_name": "unboundbot-research-binance",
+  "initial_state": "running",
+  "force_entry_enable": false,
+  "internals": {
+    "process_throttle_secs": 5
+  }
+}

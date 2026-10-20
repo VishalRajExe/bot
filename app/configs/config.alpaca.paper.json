@@ -1,0 +1,68 @@
+{
+  "_comment": "UnboundBot — Alpaca PAPER execution config (Phase 6). WIRED BUT NOT EXERCISED: current keys return 401 (Phase0_Audit sec.4). dry_run=false means Freqtrade sends REAL orders to the endpoint below; the trader URL is overridden to paper-api.alpaca.markets so orders go to Alpaca PAPER (no real money). Do NOT run until check_alpaca.py reports AUTH OK and the owner approves paper order flow.",
+  "_warning": "If the ccxt url override ever fails, orders could target live. Verify the resolved endpoint with check_alpaca.py before trading. Rotate the exposed keys.",
+  "trading_mode": "spot",
+  "margin_mode": "",
+  "max_open_trades": 1,
+  "stake_currency": "USD",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.99,
+  "dry_run": false,
+  "timeframe": "1d",
+  "dataformat_ohlcv": "feather",
+  "cancel_open_orders_on_exit": false,
+  "strategy": "BtcZScore",
+  "exchange": {
+    "name": "alpaca",
+    "key": "%ENV:ALPACA_PAPER_API_KEY%",
+    "secret": "%ENV:ALPACA_PAPER_API_SECRET%",
+    "ccxt_config": {
+      "urls": {
+        "api": {
+          "trader": "https://paper-api.alpaca.markets",
+          "market": "https://data.alpaca.markets"
+        }
+      }
+    },
+    "ccxt_async_config": {},
+    "pair_whitelist": [
+      "BTC/USD"
+    ],
+    "pair_blacklist": []
+  },
+  "pairlists": [
+    { "method": "StaticPairList" }
+  ],
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": false,
+    "price_last_balance": 0.0
+  },
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": false
+  },
+  "order_types": {
+    "entry": "market",
+    "exit": "market",
+    "emergency_exit": "market",
+    "stoploss": "market",
+    "stoploss_on_exchange": false
+  },
+  "unfilledtimeout": {
+    "entry": 30,
+    "exit": 30,
+    "unit": "minutes"
+  },
+  "telegram": {
+    "enabled": false,
+    "token": "",
+    "chat_id": ""
+  },
+  "bot_name": "unboundbot-alpaca-paper",
+  "initial_state": "stopped",
+  "force_entry_enable": false,
+  "internals": {
+    "process_throttle_secs": 40
+  }
+}

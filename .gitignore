@@ -1,0 +1,47 @@
+# --- Secrets and local env (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.key
+secrets.*
+
+# --- Python / virtualenv ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Freqtrade runtime artifacts ---
+user_data/data/
+user_data/logs/
+user_data/backtest_results/
+user_data/notebooks/
+app/user_data/
+*.sqlite
+*.sqlite3
+tradesv3*.sqlite*
+*.feather
+
+# --- App runtime / generated ---
+runtime/
+*.log
+.ft_install.log
+*.db
+*.db-journal
+
+# --- Stray screenshots (local only) ---
+Screenshot*.png
+phases_rendered.png
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+
+# --- Verification screenshots (local only) ---
+phases_doc_checkboxes.png
+phases_register_table.png
+prd_root_path.png

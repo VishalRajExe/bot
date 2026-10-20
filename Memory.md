@@ -1,0 +1,58 @@
+# Memory.md — UnboundBot build memory
+
+Created at Phase 1 (coding has begun). This is the **coding-agent** working memory.
+It is distinct from the runtime **trade ledger** (Phase 7), which records trading
+decisions/outcomes. Do not conflate the two.
+
+## Environment facts (verified 2026-10-20)
+- Freqtrade **2026.9** at `D:\BOT\freqtrade-stable` (extracted archive, no `.git`).
+- Runtime venv: `D:\BOT\.venv` → Python **3.12.13** (uv-managed). 3.14 is default `py`
+  but is too new for the pinned native deps — do not use it.
+- `uv 0.11.21`. Docker NOT installed. ta-lib 0.8.2 via binary wheel (works).
+- Run Freqtrade with: `D:\BOT\.venv\Scripts\freqtrade.exe --userdir D:\BOT\app\user_data -c <config>`.
+- Strategy path: `D:\BOT\app\strategies` (pass `--strategy-path` or set `strategy_path`).
+
+## Decisions
+- **Route B**: target Alpaca directly via CCXT on the local checkout; no fork.
+- Research/backtest data source: **Kraken BTC/USD** (public, USD-quoted). Caveat:
+  not the Alpaca feed → results are research, not execution parity.
+- Strategy `BtcZScore`: long-only spot, daily Z=(close-EMA65)/STD65. Thresholds are
+  **candidate defaults** (bull=0.5, exit=0.0), NOT source-verified.
+
+## Blockers (open)
+- **Alpaca paper keys → 401 unauthorized.** Live data + paper execution blocked until
+  valid keys. Keys live only in git-ignored `D:\BOT\.env`. Do not commit. Rotate them
+  (they were pasted in chat). Do not guess/retry credentials.
+- Second "dual signal" component of the source strategy is unavailable (protected).
+
+## Safety rails (always)
+- Paper only. No live keys. No leverage/margin/shorts. Preserve `1.0` spot multiplier.
+- Keep `fiat_display_currency` unset → no CoinGecko runtime calls.
+- AI learning loop may propose/annotate but never auto-change approved rules or place orders.
+
+## Log
+- 2026-10-20 Phase 0 complete → docs/Phase0_Audit.md. Install verified. Alpaca creds 401.
+- 2026-10-20 Phase 1: skeleton, configs, BtcZScore strategy, .env/.gitignore, Memory.md.
+- 2026-10-20 Phase 2: downloaded Binance BTC/USDT 1d (3351 candles, 2017-08→2026-10).
+  Kraken OHLCV history too short (freqtrade refuses; --dl-trades needed).
+- 2026-10-20 Phase 3/4: backtest ran. Candidate thresholds (bull .5/exit 0):
+  47 trades, +482.6%, CAGR 22.16%, maxDD 22.88%, win 38.3%. Buy-hold 512.4% →
+  strategy did NOT clearly beat hold. Claimed 65.92%/26.79% NOT reproduced. Unverified.
+- 2026-10-20 Phase 5: protections (Cooldown, MaxDrawdown 25%/90, StoplossGuard) moved
+  into strategy (config-level deprecated in 2026.9). Protected backtest: 45 trades,
+  +599.3%, CAGR 24.73%, maxDD 22.88%.
+- 2026-10-20 Phase 7: SQLite ledger app/ledger/unbound.db (trades/metrics/equity/ai_notes)
+  via app/scripts/build_ledger.py. 6 evidence notes (FACT/HYPOTHESIS/GUARDRAIL).
+- 2026-10-20 Phase 9: Streamlit dark dashboard app/dashboard/app.py renders OK
+  (verified in browser). Fixed CAGR *100 bug. Live BTC tile via public Kraken (no CoinGecko).
+- 2026-10-20 Runtime: `freqtrade trade --dry-run` RUNNING (heartbeat state=RUNNING),
+  polls Binance, protections armed, waits for new daily candle.
+- 2026-10-20 Phase 6: config.alpaca.paper.json + app/scripts/check_alpaca.py wired.
+  Gate returns exit 2 (AUTH BLOCKED). NOT exercised until valid keys.
+
+## How to run
+- Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20180101- --enable-protections`
+- Ledger: `python app/scripts/build_ledger.py`
+- Dashboard: `streamlit run app/dashboard/app.py` (http://127.0.0.1:8501)
+- Live dry-run: `freqtrade trade -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --dry-run`
+- Alpaca gate: `python app/scripts/check_alpaca.py`
