@@ -60,6 +60,12 @@ decisions/outcomes. Do not conflate the two.
   fetches full daily history, populates enter/exit signals (enter=False today, no position).
 - 2026-10-20 Phase 6b: dashboard "Alpaca Paper (live)" tab (read-only) shows Cash/Equity/
   Buying power/Portfolio + positions + crypto_status, live; footer reports PAPER bot ONLINE.
+- 2026-10-21 Phase 8 (HMM regime, RESEARCH ONLY): app/research/hmm_regime.py — self-contained
+  NumPy Gaussian HMM (Baum-Welch EM + causal forward filtering), walk-forward OOS, no ML deps.
+  Causality test max|Δ|=0 (passes). BIC picked K=2. OOS 2024-10→2026-10: HMM-filter +6.2%
+  (DD 51%, 100 changes) vs buy-hold +18.7% vs Z-proxy +24.9% → did NOT beat baselines.
+  Decision: DEFERRED for trading activation (per plan; not wired to strategy/executor).
+  Artifacts app/research/artifacts/, report docs/Phase8_HMM_Report.md, ledger regime_states.
 
 ## How to run
 - Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20180101- --enable-protections`
@@ -68,3 +74,4 @@ decisions/outcomes. Do not conflate the two.
 - Live dry-run: `freqtrade trade -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --dry-run`
 - Alpaca gate: `python app/scripts/check_alpaca.py`
 - Alpaca paper bot: `python app/scripts/run_paper.py` (injects keys from .env, dry_run=false → paper-api)
+- Phase 8 HMM research (non-trading): `python app/research/hmm_regime.py` → artifacts + docs/Phase8_HMM_Report.md

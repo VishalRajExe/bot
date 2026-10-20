@@ -83,6 +83,30 @@ def load_regime() -> pd.DataFrame:
     return df[["date", "close", "zscore", "state"]]
 
 
+@st.cache_data(ttl=120)
+def load_hmm_regimes():
+    """Read-only Phase 8 HMM experiment output (research, NOT active in trading).
+    Returns a DataFrame or None if the experiment has not been run."""
+    if not LEDGER_DB.exists():
+        return None
+    con = sqlite3.connect(LEDGER_DB)
+    try:
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "regime_states" not in tables:
+            return None
+        df = pd.read_sql_query(
+            "SELECT date, regime, p_bull, model_version FROM regime_states ORDER BY date", con
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        con.close()
+    if df.empty:
+        return None
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
 @st.cache_data(ttl=30)
 def live_price():
     """Public Kraken last price for BTC/USD. No keys, no CoinGecko. Returns (price, ts) or (None, None)."""
@@ -217,6 +241,24 @@ with tab_reg:
     st.caption("Daily Z = (close − EMA65) / STD65. Bands are candidate thresholds (±0.5), not source-verified.")
     counts = regime["state"].value_counts().rename_axis("state").reset_index(name="days")
     st.bar_chart(counts, x="state", y="days", color="#8b949e")
+
+    st.divider()
+    st.markdown("**Phase 8 — HMM regime experiment**")
+    hmm = load_hmm_regimes()
+    if hmm is None:
+        st.info("HMM experiment not run yet. Run `python app/research/hmm_regime.py` to generate research artifacts.")
+    else:
+        st.badge("Research only — NOT active in trading", color="orange")
+        st.caption(
+            f"Self-contained Gaussian HMM on daily log-returns, causal forward-only filtering. "
+            f"Model version: `{hmm['model_version'].iloc[-1]}`. Never wired to the strategy or executor."
+        )
+        h = hmm.copy()
+        h["bull"] = (h["regime"] == "bullish").astype(int)
+        st.area_chart(h, x="date", y="bull", color="#8b5cf6")
+        hc = h["regime"].value_counts().rename_axis("regime").reset_index(name="days")
+        st.bar_chart(hc, x="regime", y="days", color="#8b5cf6")
+        st.caption("See docs/Phase8_HMM_Report.md — the filter did not beat buy-and-hold/Z-proxy out-of-sample; activation is DEFERRED.")
 
 with tab_trades:
     t = load_trades()

@@ -32,6 +32,7 @@ runtime/
 .ft_install.log
 *.db
 *.db-journal
+app/research/artifacts/
 
 # --- Stray screenshots (local only) ---
 Screenshot*.png
