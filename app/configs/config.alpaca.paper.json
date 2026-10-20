@@ -1,5 +1,5 @@
 {
-  "_comment": "UnboundBot — Alpaca PAPER execution config (Phase 6). WIRED BUT NOT EXERCISED: current keys return 401 (Phase0_Audit sec.4). dry_run=false means Freqtrade sends REAL orders to the endpoint below; the trader URL is overridden to paper-api.alpaca.markets so orders go to Alpaca PAPER (no real money). Do NOT run until check_alpaca.py reports AUTH OK and the owner approves paper order flow.",
+  "_comment": "UnboundBot — Alpaca PAPER execution config (Phase 6). dry_run=false means Freqtrade sends REAL orders to the endpoint below; the trader URL is overridden to paper-api.alpaca.markets so orders go to Alpaca PAPER (no real money). Keys authenticate OK (check_alpaca.py). Do NOT run until the owner approves paper order flow.",
   "_warning": "If the ccxt url override ever fails, orders could target live. Verify the resolved endpoint with check_alpaca.py before trading. Rotate the exposed keys.",
   "trading_mode": "spot",
   "margin_mode": "",
@@ -14,8 +14,13 @@
   "strategy": "BtcZScore",
   "exchange": {
     "name": "alpaca",
-    "key": "%ENV:ALPACA_PAPER_API_KEY%",
-    "secret": "%ENV:ALPACA_PAPER_API_SECRET%",
+    "key": "",
+    "secret": "",
+    "_secrets_note": "Keys are injected at runtime from D:\\BOT\\.env via FREQTRADE__EXCHANGE__KEY/SECRET by app/scripts/run_paper.py. Never hardcode here (this file is committed).",
+    "_ft_has_note": "Alpaca is not a Freqtrade-native exchange. Its ccxt fetch_ohlcv returns ONLY the current partial bar when called without a 'since' timestamp, so Freqtrade's default 'regular' refresh (since=None) yielded 1 candle -> 'Empty candle'. ohlcv_require_since=true forces Freqtrade to always compute a 'since' and take the historic-fetch path, which returns the full daily history needed for the EMA65/STD65 startup.",
+    "_ft_has_params": {
+      "ohlcv_require_since": true
+    },
     "ccxt_config": {
       "urls": {
         "api": {
@@ -60,7 +65,7 @@
     "chat_id": ""
   },
   "bot_name": "unboundbot-alpaca-paper",
-  "initial_state": "stopped",
+  "initial_state": "running",
   "force_entry_enable": false,
   "internals": {
     "process_throttle_secs": 40

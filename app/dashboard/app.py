@@ -95,6 +95,61 @@ def live_price():
         return None, None
 
 
+def _alpaca_keys() -> tuple[str, str]:
+    """Read paper keys from D:\\BOT\\.env (never printed). Returns ("","") if absent."""
+    import os
+    p = ROOT / ".env"
+    if not p.exists():
+        return "", ""
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+    return (os.environ.get("ALPACA_PAPER_API_KEY", ""),
+            os.environ.get("ALPACA_PAPER_API_SECRET", ""))
+
+
+@st.cache_data(ttl=30)
+def load_alpaca_account():
+    """Read-only Alpaca PAPER account + positions. Places no orders, prints no keys.
+    Returns dict with 'ok' flag; never raises."""
+    import requests
+    key, secret = _alpaca_keys()
+    base = "https://paper-api.alpaca.markets"
+    hdr = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    out = {"ok": False, "reason": "", "asof": datetime.now(timezone.utc)}
+    if not key or not secret:
+        out["reason"] = "no paper keys in .env"
+        return out
+    try:
+        a = requests.get(f"{base}/v2/account", headers=hdr, timeout=15)
+        if a.status_code != 200:
+            out["reason"] = f"account HTTP {a.status_code}"
+            return out
+        acct = a.json()
+        pos = requests.get(f"{base}/v2/positions", headers=hdr, timeout=15)
+        positions = pos.json() if pos.status_code == 200 else []
+        out.update({
+            "ok": True,
+            "cash": float(acct.get("cash", 0) or 0),
+            "equity": float(acct.get("equity", 0) or 0),
+            "buying_power": float(acct.get("buying_power", 0) or 0),
+            "portfolio_val": float(acct.get("portfolio_valuation", 0) or 0),
+            "crypto_status": acct.get("crypto_status"),
+            "positions": [
+                {"symbol": p.get("symbol"), "qty": float(p.get("qty", 0) or 0),
+                 "market_val": float(p.get("market_value", 0) or 0),
+                 "avg": float(p.get("avg_entry_price", 0) or 0),
+                 "unrealized_plpc": float(p.get("unrealized_plpc", 0) or 0) * 100}
+                for p in positions if isinstance(positions, list)
+            ],
+        })
+    except Exception as e:  # noqa: BLE001
+        out["reason"] = f"{type(e).__name__}: {str(e)[:80]}"
+    return out
+
+
 # ----------------------------- UI -----------------------------
 st.markdown("## UnboundBot · Regime Trader")
 m = load_metrics()
@@ -137,8 +192,8 @@ k[3].metric("Win rate", f"{winrate:,.1f}%")
 k[4].metric("Max drawdown", f"{maxdd:,.1f}%")
 k[5].metric("Sharpe", f"{(m.get('sharpe') or 0):,.2f}")
 
-tab_eq, tab_reg, tab_trades, tab_ai, tab_risk = st.tabs(
-    ["Equity & Drawdown", "Regime / Signal", "Trade Ledger", "AI Learning Notes", "Risk & Model"]
+tab_eq, tab_reg, tab_trades, tab_ai, tab_risk, tab_alpaca = st.tabs(
+    ["Equity & Drawdown", "Regime / Signal", "Trade Ledger", "AI Learning Notes", "Risk & Model", "Alpaca Paper (live)"]
 )
 
 with tab_eq:
@@ -198,8 +253,35 @@ with tab_risk:
     })
     st.caption(f"Ledger: {LEDGER_DB}")
 
+with tab_alpaca:
+    st.markdown("**Alpaca PAPER account** — read-only live snapshot (no orders placed from here)")
+    ap = load_alpaca_account()
+    if ap["ok"]:
+        a1, a2, a3, a4 = st.columns(4)
+        a1.metric("Cash", f"${ap['cash']:,.2f}")
+        a2.metric("Equity", f"${ap['equity']:,.2f}")
+        a3.metric("Buying power", f"${ap['buying_power']:,.2f}")
+        a4.metric("Portfolio value", f"${ap['portfolio_val']:,.2f}")
+        st.caption(
+            f"crypto_status: **{ap['crypto_status']}**  ·  "
+            f"fetched {ap['asof']:%Y-%m-%d %H:%M:%S} UTC"
+        )
+        if ap["positions"]:
+            st.markdown("Open positions")
+            st.dataframe(pd.DataFrame(ap["positions"]), use_container_width=True, hide_index=True)
+        else:
+            st.info("No open positions — bot is running but no entry signal has fired yet.")
+    else:
+        st.warning(f"Alpaca paper account unavailable: {ap['reason'] or 'unknown'}")
+        st.caption("The bot being ONLINE below is independent; this panel only reads the account.")
+
 st.divider()
+_acc = load_alpaca_account()
+_paper = (
+    "Alpaca PAPER bot is ONLINE (real orders to paper-api, no live funds)"
+    if _acc.get("ok") else
+    "Alpaca PAPER bot wired; account panel offline (see Alpaca Paper tab)"
+)
 st.caption(
-    f"Rendered {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC · "
-    "Alpaca paper execution is wired but BLOCKED pending valid API keys (Phase 0 audit §4)."
+    f"Rendered {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC · {_paper}."
 )

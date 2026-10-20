@@ -20,10 +20,15 @@ decisions/outcomes. Do not conflate the two.
   **candidate defaults** (bull=0.5, exit=0.0), NOT source-verified.
 
 ## Blockers (open)
-- **Alpaca paper keys → 401 unauthorized.** Live data + paper execution blocked until
-  valid keys. Keys live only in git-ignored `D:\BOT\.env`. Do not commit. Rotate them
-  (they were pasted in chat). Do not guess/retry credentials.
 - Second "dual signal" component of the source strategy is unavailable (protected).
+
+## Resolved blockers
+- **Alpaca paper keys now authenticate** (AUTH OK: cash 100k, crypto ACTIVE). Keys live
+  only in git-ignored `D:\BOT\.env`. They were pasted in chat — rotate them.
+- **"Empty candle (OHLCV) for BTC/USD" in the live paper bot** — root cause: ccxt alpaca
+  returns only 1 partial bar when Freqtrade's periodic refresh calls fetch_ohlcv with
+  `since=None`. Fix: `exchange._ft_has_params.ohlcv_require_since=true` forces Freqtrade
+  to compute a `since` and take the historic-fetch path → full daily history.
 
 ## Safety rails (always)
 - Paper only. No live keys. No leverage/margin/shorts. Preserve `1.0` spot multiplier.
@@ -49,6 +54,12 @@ decisions/outcomes. Do not conflate the two.
   polls Binance, protections armed, waits for new daily candle.
 - 2026-10-20 Phase 6: config.alpaca.paper.json + app/scripts/check_alpaca.py wired.
   Gate returns exit 2 (AUTH BLOCKED). NOT exercised until valid keys.
+- 2026-10-20 Phase 6 (unblocked): valid paper keys → check_alpaca AUTH OK. Freqtrade does
+  NOT support %ENV% config; app/scripts/run_paper.py injects FREQTRADE__EXCHANGE__KEY/SECRET.
+  Fixed "Empty candle" via ohlcv_require_since (see Resolved blockers). Paper bot now RUNNING,
+  fetches full daily history, populates enter/exit signals (enter=False today, no position).
+- 2026-10-20 Phase 6b: dashboard "Alpaca Paper (live)" tab (read-only) shows Cash/Equity/
+  Buying power/Portfolio + positions + crypto_status, live; footer reports PAPER bot ONLINE.
 
 ## How to run
 - Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20180101- --enable-protections`
@@ -56,3 +67,4 @@ decisions/outcomes. Do not conflate the two.
 - Dashboard: `streamlit run app/dashboard/app.py` (http://127.0.0.1:8501)
 - Live dry-run: `freqtrade trade -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --dry-run`
 - Alpaca gate: `python app/scripts/check_alpaca.py`
+- Alpaca paper bot: `python app/scripts/run_paper.py` (injects keys from .env, dry_run=false → paper-api)
