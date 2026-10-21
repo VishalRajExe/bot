@@ -290,7 +290,10 @@ def sweep(env: dict, hdrs: dict, pairs: list[str], notify_mode: str) -> int:
     for pair in pairs:
         asset = build_asset(env, hdrs, pair, positions, blocked)
         key = (asset["signal"], bool(asset["position"]), asset["order_state"], asset["status"])
+        # JSON round-trips tuples as lists — normalize before comparing, else
+        # every sweep "detects" a false change (tuple != list in Python).
         prev = state.get(pair, {}).get("key")
+        prev = tuple(prev) if prev is not None else None
         text = format_asset_status(asset)
         if notify_mode == "full" or key != prev:
             if send(env, text):
