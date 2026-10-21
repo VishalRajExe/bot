@@ -68,6 +68,17 @@ def main() -> int:
     env["FREQTRADE__EXCHANGE__KEY"] = key
     env["FREQTRADE__EXCHANGE__SECRET"] = secret
 
+    # Telegram (optional): inject from .env via Freqtrade's generic env override.
+    # Config keeps telegram.token/chat_id empty; these env vars fill them at launch.
+    tg_token = os.environ.get("TELEGRAM_TOKEN", "")
+    tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if tg_token:
+        env["FREQTRADE__TELEGRAM__TOKEN"] = tg_token
+        print("telegram token loaded from .env (value not shown)")
+    if tg_chat:
+        env["FREQTRADE__TELEGRAM__CHAT_ID"] = tg_chat
+        print("telegram chat_id loaded from .env")
+
     if "--check" in sys.argv:
         # Validate markets/data without trading: use show-trades? simplest: list-markets.
         args = [str(FT), "list-markets", "-c", str(CFG), "--userdir", str(USERDIR)]

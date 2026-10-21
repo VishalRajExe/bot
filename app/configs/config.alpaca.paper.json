@@ -1,5 +1,5 @@
 {
-  "_comment": "UnboundBot — Alpaca PAPER execution config (Phase 6). dry_run=false means Freqtrade sends REAL orders to the endpoint below; the trader URL is overridden to paper-api.alpaca.markets so orders go to Alpaca PAPER (no real money). Keys authenticate OK (check_alpaca.py). Do NOT run until the owner approves paper order flow.",
+  "_comment": "UnboundBot \u2014 Alpaca PAPER execution config (Phase 6). dry_run=false means Freqtrade sends REAL orders to the endpoint below; the trader URL is overridden to paper-api.alpaca.markets so orders go to Alpaca PAPER (no real money). Keys authenticate OK (check_alpaca.py). Do NOT run until the owner approves paper order flow.",
   "_warning": "If the ccxt url override ever fails, orders could target live. Verify the resolved endpoint with check_alpaca.py before trading. Rotate the exposed keys.",
   "trading_mode": "spot",
   "margin_mode": "",
@@ -37,7 +37,9 @@
     "pair_blacklist": []
   },
   "pairlists": [
-    { "method": "StaticPairList" }
+    {
+      "method": "StaticPairList"
+    }
   ],
   "entry_pricing": {
     "price_side": "other",
@@ -61,9 +63,10 @@
     "unit": "minutes"
   },
   "telegram": {
-    "enabled": false,
+    "enabled": true,
     "token": "",
-    "chat_id": ""
+    "chat_id": "",
+    "xrate": 0.4
   },
   "bot_name": "unboundbot-alpaca-paper",
   "initial_state": "running",

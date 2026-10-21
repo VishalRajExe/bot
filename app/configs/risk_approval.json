@@ -1,0 +1,41 @@
+{
+  "_purpose": "Owner risk-approval record consumed by app/scripts/preflight.py (approval_exists gate). Its presence lets TRADING READY go green ONLY if every BLOCK-level config check also passes. It documents the specific limits the owner approved; it does not itself weaken any check.",
+  "approved_by": "VishalRajExe (owner)",
+  "approved_on": "2026-10-21",
+  "authorization": "Owner explicitly approved these candidate thresholds/limits and authorized a bounded ALPACA PAPER restart to observe live behavior. No live-money trading is approved.",
+  "scope": {
+    "mode": "paper_only",
+    "endpoint": "https://paper-api.alpaca.markets",
+    "real_money": false,
+    "pair": "BTC/USD",
+    "timeframe": "1d",
+    "strategy": "BtcZScore"
+  },
+  "strategy_parameters": {
+    "zscore_period": 65,
+    "bull_threshold": 0.5,
+    "exit_threshold": 0.0,
+    "stoploss": -0.35,
+    "startup_candle_count": 400,
+    "can_short": false,
+    "leverage": 1.0,
+    "note": "Thresholds are the labeled CANDIDATE defaults; owner approves them for PAPER evaluation only. Source '65.92% CAGR' claim is NOT reproduced and is NOT accepted as fact."
+  },
+  "position_sizing": {
+    "max_open_trades": 1,
+    "stake_amount": "unlimited",
+    "acknowledged_risk": "stake_amount='unlimited' means one all-in spot position on the paper account (~full equity). Approved for paper observation; MUST be bounded before any live consideration.",
+    "preflight_warn": "UNLIMITED_STAKE remains a WARN by design (documented approval), not a BLOCK."
+  },
+  "protections": [
+    { "method": "CooldownPeriod", "stop_duration_candles": 2 },
+    { "method": "MaxDrawdown", "lookback_period_candles": 90, "trade_limit": 5, "stop_duration_candles": 7, "max_allowed_drawdown": 0.25 },
+    { "method": "StoplossGuard", "lookback_period_candles": 30, "trade_limit": 3, "stop_duration_candles": 14, "only_per_pair": true }
+  ],
+  "guardrails": [
+    "Spot only, long-only, unleveraged; no borrowing, no margin, no shorts.",
+    "AI/research layer may annotate only; it must never change these approved rules or place orders.",
+    "Reconciliation (app/scripts/reconcile.py) runs on a cadence; any CRITICAL/OFFLINE/STALE status stops promotion.",
+    "No promotion to real money without a separate explicit owner approval and a clean multi-week paper reconciliation."
+  ]
+}

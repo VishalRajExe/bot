@@ -101,8 +101,10 @@ def test_unset_threshold_blocked():
     assert "THRESHOLD_UNSET" in _codes(f)
 
 
-def test_missing_approval_keeps_trading_disabled():
+def test_missing_approval_keeps_trading_disabled(monkeypatch):
     # Even a perfectly safe config is NOT ready without an owner approval record.
+    # Hermetic: force the approval-missing state regardless of the real repo file.
+    monkeypatch.setattr(P, "approval_exists", lambda: False)
     ready, f = P.audit_config(_safe_cfg(), _safe_meta())
     assert ready is False
     assert "RISK_APPROVAL_MISSING" in _codes(f)
