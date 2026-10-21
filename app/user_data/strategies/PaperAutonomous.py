@@ -36,6 +36,15 @@ from risk import policy  # noqa: E402
 
 from BtcZScore import BtcZScore  # noqa: E402  (same strategies dir)
 
+# Register the gated, fail-closed Alpaca fee-in-base correction so a wallet-sized
+# exit closes cleanly (see app/exchange_ext/alpaca_fees.py for the full rationale).
+# Loaded here because BOTH executors import this module: the daily bot runs
+# PaperAutonomous directly and the fast bot runs MomentumAlt (a subclass). Removing
+# this line restores stock Freqtrade behavior.
+from exchange_ext.alpaca_fees import install as _install_alpaca_fee_patch  # noqa: E402
+
+_install_alpaca_fee_patch()
+
 
 class PaperAutonomous(BtcZScore):
     INTERFACE_VERSION = 3

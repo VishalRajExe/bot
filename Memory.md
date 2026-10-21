@@ -36,12 +36,22 @@ decisions/outcomes. Do not conflate the two.
 
 ## Blockers (open)
 - Second "dual signal" component of the source strategy is unavailable (protected).
-- **Alpaca fee-in-base crypto exit dust** (found 2026-10-21 via a controlled test trade): a full exit
-  leaves a sub-fee base-currency residual that Freqtrade cannot sell, so the trade never closes. Blocks
-  AUTONOMOUS crypto EXITS on BOTH executors (fast momentum bot is PAUSED for this reason; daily baseline
-  hasn't filled yet). Needs an approved fix before re-enabling exits — see Log 2026-10-21.
 
 ## Resolved blockers
+- **Alpaca fee-in-base crypto exit dust** (found then FIXED 2026-10-21). Ground truth captured with a throwaway
+  probe against the paper account: Alpaca reports **no fee at all** on crypto fills — `fetch_order` has no
+  `commission`, `fetch_my_trades` FILL activities carry no `fee_paid`, ccxt returns `fee={'cost':None,'currency':None}`
+  (confirmed in ccxt `alpaca.py`: `parse_order` hardcodes fee currency `USD` and crypto fills omit commission).
+  Only the **broker wallet** reveals the shortfall (credited = filled − ~0.25% in base). So "reclassify the reported
+  fee" was impossible. Fix: `app/exchange_ext/alpaca_fees.py` — a gated, fail-closed, idempotent **runtime** wrap of
+  `FreqtradeBot.get_real_amount` that derives `fee_in_base = safe_filled − (wallets.get_free(base)+get_used(base))`
+  and returns it, so the engine's own tested path reduces `trade.amount` to the NET credited amount and a
+  wallet-sized exit closes cleanly. Gates: exchange name `alpaca` + `trading_mode` spot + entry side + closed order
+  + plausible rate (0 < fee ≤ 2%); anything else (non-alpaca, still-open, no shortfall, implausible, **any exception**)
+  returns the stock result and leaves the trade untouched — never blocks the main loop. Installed from
+  `PaperAutonomous` import (thin layer only; vendored engine untouched). Verified live end-to-end: DOT buy filled
+  43.1183 → corrected to net 43.0105 → force-exit **CLOSED** (`is_open=0`, −0.098% ≈ honest round-trip fee cost),
+  reconcile **drift=0.0**, autonomous XRP/LINK entries corrected identically. +21 tests → **149 passed**.
 - **Alpaca paper keys now authenticate** (AUTH OK: cash 100k, crypto ACTIVE). Keys live
   only in git-ignored `D:\BOT\.env`. They were pasted in chat — rotate them.
 - **"Empty candle (OHLCV) for BTC/USD" in the live paper bot** — root cause: ccxt alpaca
@@ -221,9 +231,26 @@ decisions/outcomes. Do not conflate the two.
   fix**: `reconcile.py` now treats fee-net drift as expected (tolerance scales with open amount, not absolute
   1e-6) so a correctly-held position doesn't false-CRITICAL; +2 regression tests (fee-net within tol → HEALTHY,
   real mismatch → still CRITICAL) → **128 passed**. Cleaned the isolated fast test DB (broker 0 == DB 0 open);
-  baseline untouched; equity honestly 99,999.59 (−$0.41 test cost). **OPEN BLOCKER (both executors, crypto):
-  Alpaca fee-in-base exit dust — must design a proper handling (engine fee-currency override via an approved
-  Alpaca exchange subclass, or a safe documented operational close) before re-enabling autonomous exits.**
+  baseline untouched; equity honestly 99,999.59 (−$0.41 test cost). **RESOLVED SAME DAY** — see
+  Resolved blockers + the entry below: gated wallet-derived base fee in `app/exchange_ext/alpaca_fees.py`,
+  exits verified closing cleanly, fast executor RE-ENABLED (un-paused).
+
+- 2026-10-21 **FEE-IN-BASE FIX VERIFIED END-TO-END; FAST EXECUTOR UN-PAUSED.** Re-enabled the localhost
+  `api_server` + `force_entry_enable` on the fast config purely to run the round trip (creds via
+  `FREQTRADE__API_SERVER__*` env from .env, never in the file), then: forceenter $50 DOT → filled 43.11831666,
+  patch logged `derived base fee 0.10779579 DOT (filled=43.11831666 credited=43.01052087)` → `trade.amount`
+  became the net 43.010520868 → force-exit → **trade CLOSED, `is_open=0`, exit_reason `force_exit`,
+  close_profit −0.098%** (the real two-sided fee cost, i.e. the accounting is now honest). MomentumAlt
+  autonomously opened XRP (id=2) and LINK (id=3) meanwhile and both were corrected identically, proving the
+  path is not test-specific. `reconcile.py --fast`: **drift=0.0**, broker_qty == ft_open_amt, 0 unmatched /
+  0 unresolved, status REVIEW only because of transient post-exit `pairlocks` (auto-lock + 2-candle cooldown,
+  all expiring within minutes). First restart attempt failed CLOSED as designed — `AttributeError: 'FreqtradeBot'
+  object has no attribute '_config'` (FreqtradeBot uses `self.config`; my test stub used `_config` and masked it,
+  lesson: **stubs must mirror the real attribute names**) — the trade stayed gross and untouched, no corruption;
+  fixed to `getattr(self,'config',None) or getattr(self,'_config',None)`. Temp affordances reverted again
+  (`force_entry_enable=false`, api_server block removed, port 10053 verified closed), temp scripts deleted,
+  **149 passed**, and BOTH chains restarted so the daily BTC baseline and fast executor now run the patched code.
+  **No profitability claim: one forced round trip at a −0.098% fee cost only proves exits settle.**
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`

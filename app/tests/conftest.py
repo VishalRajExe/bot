@@ -13,9 +13,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "app" / "scripts"
-STRATEGIES = ROOT / "app" / "user_data" / "strategies"
-for p in (str(SCRIPTS), str(STRATEGIES)):
+APP = ROOT / "app"
+SCRIPTS = APP / "scripts"
+STRATEGIES = APP / "user_data" / "strategies"
+for p in (str(SCRIPTS), str(STRATEGIES), str(APP)):
     if p not in sys.path:
         sys.path.insert(0, p)
 

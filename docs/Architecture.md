@@ -152,6 +152,15 @@ Account/quote monitoring and risk evaluation run independently of the daily sign
 - After ambiguous writes, query and reconcile before resubmitting. Use bounded retries for reads; generic write retries are unsafe.
 - Reconcile duplicated/out-of-order stream events using authoritative broker reads.
 - Account for actual versus modeled fees, fee currency, base-asset deductions, residual quantities, and partial exits.
+- **Implemented seam — Alpaca base-asset fee deduction (`app/exchange_ext/alpaca_fees.py`).** Alpaca settles crypto
+  fees by deducting the BASE asset and reports no fee on any fill read (`fetch_order` has no `commission`,
+  `fetch_my_trades` has no `fee_paid`, ccxt returns a null fee), so the only authoritative signal is the broker
+  wallet: credited base = filled − fee. The thin layer wraps the engine's fee-derivation call at runtime, computes
+  `filled − (free + used)` of base from the wallet, and returns it so the engine reduces the trade to the net amount
+  and a wallet-sized exit closes instead of jamming on dust. It is exchange/trade-mode gated (alpaca + spot),
+  entry-side and closed-order gated, bounded to a plausible rate (0 < fee ≤ 2%), idempotent, and fail-closed — any
+  other case or any exception returns the engine's original result and leaves the trade untouched. It edits no
+  vendored engine file and mutates no database directly.
 - Test process crashes before/after submission and persistence, partial fills, restart recovery, and stale account state.
 - Use bounded paper tests only after strategy/risk prerequisites and a test budget/account are approved. No exactly-once network-delivery claims.
 
