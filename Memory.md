@@ -66,6 +66,15 @@ decisions/outcomes. Do not conflate the two.
   (DD 51%, 100 changes) vs buy-hold +18.7% vs Z-proxy +24.9% → did NOT beat baselines.
   Decision: DEFERRED for trading activation (per plan; not wired to strategy/executor).
   Artifacts app/research/artifacts/, report docs/Phase8_HMM_Report.md, ledger regime_states.
+- 2026-10-21 Phase 10 (observation harness, READ-ONLY): app/scripts/obs_lib.py + reconcile.py +
+  weekly_report.py. reconcile.py mirrors the Freqtrade paper DB (D:/BOT/tradesv3.sqlite, now pinned
+  via config db_url) + Alpaca PAPER account/positions/orders into NEW ledger tables kept SEPARATE
+  from research (paper_trades / reconcile_log / account_equity / reports): never overwrites backtest
+  rows, never places orders, never prints keys. Detects qty drift / unmatched broker orders /
+  protection locks → status OK|REVIEW|BROKER_UNREACHABLE. weekly_report.py → docs/Phase10_Observation.md
+  (signals/fills/costs/reconcile/risk/exposure+drawdown, honest "insufficient sample" for daily bot).
+  Dashboard "Observation" tab renders live (verified): OK, $100k equity, drift 0, 0 trades. `--watch` loop
+  or a scheduled task establishes the observation cadence. Time-based phase — accumulate weeks before judgments.
 
 ## How to run
 - Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20180101- --enable-protections`
@@ -75,3 +84,5 @@ decisions/outcomes. Do not conflate the two.
 - Alpaca gate: `python app/scripts/check_alpaca.py`
 - Alpaca paper bot: `python app/scripts/run_paper.py` (injects keys from .env, dry_run=false → paper-api)
 - Phase 8 HMM research (non-trading): `python app/research/hmm_regime.py` → artifacts + docs/Phase8_HMM_Report.md
+- Phase 10 reconcile (read-only mirror): `python app/scripts/reconcile.py`  ·  cadence: `python app/scripts/reconcile.py --watch 900`
+- Phase 10 weekly report: `python app/scripts/weekly_report.py` (optional `--days 14`) → docs/Phase10_Observation.md

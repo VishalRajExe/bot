@@ -174,6 +174,66 @@ def load_alpaca_account():
     return out
 
 
+def _table_exists(con, name: str) -> bool:
+    return (con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None)
+
+
+@st.cache_data(ttl=60)
+def load_reconcile_log(limit: int = 200):
+    """Read-only Phase 10 reconcile snapshots (populated by reconcile.py)."""
+    if not LEDGER_DB.exists():
+        return None
+    con = sqlite3.connect(LEDGER_DB)
+    try:
+        if not _table_exists(con, "reconcile_log"):
+            return None
+        df = pd.read_sql_query(
+            "SELECT * FROM reconcile_log ORDER BY ts DESC LIMIT ?", con, params=(limit,))
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        con.close()
+    return df if not df.empty else None
+
+
+@st.cache_data(ttl=60)
+def load_account_equity():
+    if not LEDGER_DB.exists():
+        return None
+    con = sqlite3.connect(LEDGER_DB)
+    try:
+        if not _table_exists(con, "account_equity"):
+            return None
+        df = pd.read_sql_query(
+            "SELECT date, cash, equity, position_value, drawdown FROM account_equity ORDER BY date", con)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        con.close()
+    if df.empty:
+        return None
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+@st.cache_data(ttl=60)
+def load_paper_trades():
+    if not LEDGER_DB.exists():
+        return None
+    con = sqlite3.connect(LEDGER_DB)
+    try:
+        if not _table_exists(con, "paper_trades"):
+            return None
+        df = pd.read_sql_query("SELECT * FROM paper_trades ORDER BY id", con)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        con.close()
+    return df if not df.empty else None
+
+
 # ----------------------------- UI -----------------------------
 st.markdown("## UnboundBot · Regime Trader")
 m = load_metrics()
@@ -216,8 +276,8 @@ k[3].metric("Win rate", f"{winrate:,.1f}%")
 k[4].metric("Max drawdown", f"{maxdd:,.1f}%")
 k[5].metric("Sharpe", f"{(m.get('sharpe') or 0):,.2f}")
 
-tab_eq, tab_reg, tab_trades, tab_ai, tab_risk, tab_alpaca = st.tabs(
-    ["Equity & Drawdown", "Regime / Signal", "Trade Ledger", "AI Learning Notes", "Risk & Model", "Alpaca Paper (live)"]
+tab_eq, tab_reg, tab_trades, tab_ai, tab_risk, tab_alpaca, tab_obs = st.tabs(
+    ["Equity & Drawdown", "Regime / Signal", "Trade Ledger", "AI Learning Notes", "Risk & Model", "Alpaca Paper (live)", "Observation"]
 )
 
 with tab_eq:
@@ -316,6 +376,49 @@ with tab_alpaca:
     else:
         st.warning(f"Alpaca paper account unavailable: {ap['reason'] or 'unknown'}")
         st.caption("The bot being ONLINE below is independent; this panel only reads the account.")
+
+with tab_obs:
+    st.markdown("**Phase 10 — Paper observation harness** · read-only (populated by `app/scripts/reconcile.py`)")
+    rec = load_reconcile_log()
+    eqs = load_account_equity()
+    ptr = load_paper_trades()
+    if rec is None:
+        st.info("No reconciliation snapshots yet. Run `python app/scripts/reconcile.py` "
+                "(or add `--watch 900`) to mirror the bot + broker into the ledger.")
+    else:
+        latest = rec.iloc[0]
+        status = str(latest["status"])
+        _col = {"OK": "green", "REVIEW": "orange", "BROKER_UNREACHABLE": "red"}.get(status, "gray")
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Last reconcile", f"{status}", help=str(latest["detail"]))
+        s2.metric("Broker equity", f"${float(latest['broker_equity'] or 0):,.0f}")
+        s3.metric("Qty drift", f"{float(latest['qty_drift'] or 0):.6f}")
+        s4.metric("Unmatched broker orders", f"{int(latest['unmatched_broker_orders'] or 0)}")
+        st.badge(f"Latest status: {status}", color=_col)
+        st.caption(f"as of {latest['ts']} · strategy `{latest['strategy'] or '—'}` · "
+                   f"{len(rec)} snapshot(s) retained")
+        st.divider()
+        if eqs is not None:
+            st.markdown("**Equity & drawdown (live mirror)**")
+            st.line_chart(eqs, x="date", y="equity", color="#00e5a0")
+            st.area_chart(eqs.assign(dd=eqs["drawdown"] * 100), x="date", y="dd", color="#ff5470")
+            if len(eqs) < 3:
+                st.caption("Time-series is thin — drawdown becomes meaningful only after "
+                           "repeated reconcile runs accumulate across days/weeks.")
+        st.markdown("**Reconciliation history**")
+        cols = ["ts", "status", "broker_equity", "broker_position_qty",
+                "ft_open_trades", "qty_drift", "unmatched_broker_orders", "detail"]
+        st.dataframe(rec[[c for c in cols if c in rec.columns]],
+                     use_container_width=True, hide_index=True, height=260)
+        st.markdown("**Mirrored paper trades (Freqtrade execution DB)**")
+        if ptr is None:
+            st.caption("No paper trades recorded yet — expected for a daily, single-pair bot.")
+        else:
+            show = ptr[["id", "pair", "is_open", "open_date", "close_date",
+                        "open_rate", "close_rate", "profit_ratio", "profit_abs", "exit_reason"]]
+            st.dataframe(show, use_container_width=True, hide_index=True, height=260)
+        st.caption("Full weekly write-up: docs/Phase10_Observation.md "
+                   "(regenerate with `python app/scripts/weekly_report.py`).")
 
 st.divider()
 _acc = load_alpaca_account()

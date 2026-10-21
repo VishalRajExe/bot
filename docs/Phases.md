@@ -278,10 +278,17 @@ Actual checks performed during this documentation-only step (no application, ins
 
 ## Phase 10 — Extended paper evaluation
 
+> **Observation harness is built** (2026-10-21): `app/scripts/reconcile.py` mirrors the Freqtrade
+> paper DB + Alpaca PAPER account/positions/orders into separate ledger tables (`paper_trades`,
+> `reconcile_log`, `account_equity`, `reports`) and flags drift/external activity; `app/scripts/weekly_report.py`
+> generates `docs/Phase10_Observation.md`. Read-only, idempotent, never trades. Run on a cadence
+> (`--watch`) or scheduled task. The remaining items below are **time-based** — they require the bot
+> to actually accumulate observation over weeks before acceptance judgments can be made.
+
 - [ ] P10-01 Approve dedicated account/isolation and observation budget; no competing executor.
 - [ ] P10-02 Pin strategy/risk/data/model versions for each evaluation interval.
 - [ ] P10-03 Observe an approved interval; a month is an operational starting point, not proof of daily-strategy edge.
-- [ ] P10-04 Report weekly signals/skips/orders/fills/costs/discrepancies/outages/risk/exposure/drawdown.
+- [x] P10-04 Report weekly signals/skips/orders/fills/costs/discrepancies/outages/risk/exposure/drawdown. (generator: `app/scripts/weekly_report.py` → `docs/Phase10_Observation.md`)
 - [ ] P10-05 Compare paper behavior with backtest/cost assumptions and explicit simulator limitations.
 - [ ] P10-06 Exercise bounded recovery drills without artificial trading to inflate sample size.
 - [ ] P10-07 Review AI evidence quality and false conclusions, especially with few closed trades.
