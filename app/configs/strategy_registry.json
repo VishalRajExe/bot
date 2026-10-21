@@ -1,6 +1,6 @@
 {
   "_purpose": "Pair-to-strategy registry for the PAPER executors. Maps every monitored pair to its assigned strategy, executor, timeframe, version, tradeable state, and bounded risk profile. Consumed by app/user_data/strategies/PaperAutonomous.py (daily), app/user_data/strategies/MomentumAlt.py (fast), app/scripts/preflight.py, and app/scripts/crypto_status_monitor.py. BTC's baseline math is NOT defined here — it lives in BtcZScore and is preserved by subclassing.",
-  "revised": "2026-10-21",
+  "revised": "2026-10-21 rev2 (CONSERVATIVE $100 paper preset; stakes re-based to $10/position)",
   "executor_strategy": "PaperAutonomous",
   "executor_timeframe": "1d",
   "fast_executor_strategy": "MomentumAlt",
@@ -18,7 +18,7 @@
       "version": "btc-1d-z65-b0.5-e0.0",
       "eligible": true,
       "risk": {
-        "max_stake_usd": 5000,
+        "max_stake_usd": 10,
         "stoploss": -0.35,
         "bull_threshold": 0.5,
         "exit_threshold": 0.0,
@@ -36,11 +36,11 @@
       "version": "alt-5m-mom-ema9x21-vol20-experimental",
       "eligible": true,
       "risk": {
-        "max_stake_usd": 1000,
-        "max_planned_loss_usd": 500,
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
         "stoploss": -0.03,
         "momentum": { "ema_fast": 9, "ema_slow": 21, "vol_window": 20 },
-        "note": "EXPERIMENTAL intraday momentum paper strategy (owner directive 2026-10-21 for faster trading). Buys on a fresh fast/slow EMA cross-up confirmed by a volume surge; exits on cross-down or the -3% stop. Bounded to 1000 stake / 500 max planned loss. Runs on the separate 'fast' executor (disjoint from BTC). NOT profit-proven; forward-test data only."
+        "note": "EXPERIMENTAL intraday momentum paper strategy (owner directive 2026-10-21 for faster trading). Buys on a fresh fast/slow EMA cross-up confirmed by a volume surge; exits on cross-down or the -3% stop. Bounded to 10 stake / 2 max planned loss on the $100 preset. Runs on the separate 'fast' executor (disjoint from BTC). NOT profit-proven; forward-test data only."
       }
     },
     "XRP/USD": {
@@ -54,8 +54,8 @@
       "version": "alt-5m-mom-ema9x21-vol20-experimental",
       "eligible": true,
       "risk": {
-        "max_stake_usd": 1000,
-        "max_planned_loss_usd": 500,
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
         "stoploss": -0.03,
         "momentum": { "ema_fast": 9, "ema_slow": 21, "vol_window": 20 },
         "note": "EXPERIMENTAL intraday momentum paper. Wider observed spread than BTC; still within the 0.50% cost gate. Forward-test data only."
@@ -72,8 +72,8 @@
       "version": "alt-5m-mom-ema9x21-vol20-experimental",
       "eligible": true,
       "risk": {
-        "max_stake_usd": 1000,
-        "max_planned_loss_usd": 500,
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
         "stoploss": -0.03,
         "momentum": { "ema_fast": 9, "ema_slow": 21, "vol_window": 20 },
         "note": "EXPERIMENTAL intraday momentum paper. Forward-test data only."
@@ -90,8 +90,8 @@
       "version": "alt-5m-mom-ema9x21-vol20-experimental",
       "eligible": true,
       "risk": {
-        "max_stake_usd": 1000,
-        "max_planned_loss_usd": 500,
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
         "stoploss": -0.03,
         "momentum": { "ema_fast": 9, "ema_slow": 21, "vol_window": 20 },
         "note": "EXPERIMENTAL intraday momentum paper. Forward-test data only."
