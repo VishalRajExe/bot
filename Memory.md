@@ -51,8 +51,12 @@ decisions/outcomes. Do not conflate the two.
 - AI learning loop may propose/annotate but never auto-change approved rules or place orders.
 - **Bounded sizing is mandatory.** `stake_amount="unlimited"` is a preflight BLOCK, not a
   warning. The agent PROPOSES bounded settings for owner approval; it never self-authorizes
-  risk (docs/Rules.md §5). BTC stays the single live baseline pair; extra pairs / FVG-OB are
-  research-only until a backtest + written owner approval.
+  risk (docs/Rules.md §5). **2026-10-21:** the owner gave explicit WRITTEN authorization for
+  autonomous PAPER-only execution (transcribed in `risk_approval.json` rev3) — per-trade manual
+  approval gates are removed for eligible pairs WITHIN the bounded policy; hard risk limits,
+  broker reconciliation, data-quality checks and paper-only restriction are NEVER bypassed.
+  BTC/USD remains the live baseline; live trading/leverage/shorts/futures/transfers remain
+  prohibited without a new written authorization.
 
 ## Log
 - 2026-10-20 Phase 0 complete → docs/Phase0_Audit.md. Install verified. Alpaca creds 401.
@@ -150,6 +154,29 @@ decisions/outcomes. Do not conflate the two.
   `enter_tag`/`exit_tag` (z-score reasoning) so Freqtrade's Telegram entry/exit messages carry *why*.
   config telegram `notification_types` expanded (entry/exit/filled/profit/protection/status/…).
   `app/scripts/test_notify.py` sends real formatted samples (no orders) — delivery verified (ok=True ×3).
+- 2026-10-21 **AUTONOMOUS PAPER EXECUTION ACTIVATED (owner written authorization).** Transcribed to
+  `risk_approval.json` rev3 — per-trade/per-coin manual approval REMOVED for eligible pairs WITHIN the
+  bounded policy; live trading/leverage/shorts/futures/transfers still prohibited. New data layer:
+  `paper_risk_policy.json` (per-pair stake caps BTC $5000 / alts $1000 & max planned loss $500;
+  portfolio exposure min($10000, 10% equity); ≤5 concurrent positions, 1 per pair; circuit breakers
+  daily −2% / peak-to-trough −5% → kill switch persisted, manual recovery only) +
+  `strategy_registry.json` (pair→strategy: BTC ACTIVE_BASELINE, ETH/XRP/DOT/LINK EXPERIMENTAL_PAPER
+  daily Z-score alt-1d-z65-v0, USDT STATUS_ONLY, FVG/OB RESEARCH_ONLY). Independent risk layer
+  `app/risk/policy.py` (fail-closed sizing/validators/kill-switch/rejection log). Executor =
+  `PaperAutonomous` dispatcher SUBCLASSING `BtcZScore`: BTC/USD routes to `super()` byte-identical
+  (parity test); alts use registry thresholds; non-tradeable pairs emit no signals. Entry veto via
+  `confirm_trade_entry` (unsupported/cap/breaker/stale-equity/duplicate/exposure → reject+log+explain);
+  sizing via `custom_stake_amount`. Config: whitelist 5 pairs, `max_open_trades=5`, USDT blacklisted —
+  ONE executor only. FVG/OB stays research-only: its 1H-bias/5M-entry sequence cannot run inside the
+  single 1d executor without altering the BTC baseline — documented, not faked (`strategy_registry.json`
+  reason_not_traded + docs/Strategy_FVG_OB.md). `crypto_status_monitor.py` = independent READ-ONLY
+  notifier (Alpaca data endpoint, no ccxt): per-asset Telegram (60s poll, notify-on-change + 60-min
+  heartbeat), real open positions/order state from the Freqtrade DB, maintains `equity.json`, evaluates
+  breakers and persists the kill switch, `--recover-kill-switch` for manual recovery. Tests +49
+  (`test_risk_policy.py`, `test_dispatcher.py`, format_asset_status) → 104 passed. Preflight TRADING
+  READY. Verified live: reconcile HEALTHY (drift 0), bot RUNNING 5 pairs, Telegram per-asset delivered,
+  dashboard "Autonomous Pairs" tab browser-verified (0 console errors). **Autonomous ≠ profitable:
+  alts are experimental forward-test only; FVG/OB showed no edge; no profitability claimed.**
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
@@ -162,6 +189,7 @@ decisions/outcomes. Do not conflate the two.
 - Live dry-run: `freqtrade trade -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --dry-run`
 - Alpaca gate: `python app/scripts/check_alpaca.py`
 - Alpaca paper bot: `python app/scripts/run_paper.py` (injects keys from .env, dry_run=false → paper-api)
+- Autonomous per-asset Telegram monitor (READ-ONLY, no orders): `python app/scripts/crypto_status_monitor.py --interval 60 --heartbeat-minutes 60`  ·  kill-switch manual recovery after review: add `--recover-kill-switch`
 - Phase 8 HMM research (non-trading): `python app/research/hmm_regime.py` → artifacts + docs/Phase8_HMM_Report.md
 - Phase 10 reconcile (read-only mirror): `python app/scripts/reconcile.py`  ·  cadence: `python app/scripts/reconcile.py --watch 900`
 - Phase 10 weekly report: `python app/scripts/weekly_report.py` (optional `--days 14`) → docs/Phase10_Observation.md

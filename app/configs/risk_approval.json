@@ -1,29 +1,38 @@
 {
-  "_purpose": "Owner risk configuration consumed by app/scripts/preflight.py (approval_exists gate). Presence + zero BLOCK => TRADING READY for ALPACA PAPER ONLY. This file PROPOSES bounded numeric limits; it does NOT authorize unlimited sizing, live trading, or un-vetted strategies.",
-  "revision": 2,
-  "supersedes": "v1 (self-authored, permitted stake_amount='unlimited') — withdrawn as a Rules.md §5 violation (agent must not self-authorize financial risk / enable unlimited sizing).",
+  "_purpose": "Owner risk configuration consumed by app/scripts/preflight.py (approval_exists gate). Presence + zero BLOCK => TRADING READY for ALPACA PAPER ONLY. This file records the owner's WRITTEN authorization for autonomous paper trading under a bounded policy; it does NOT authorize unlimited sizing or live trading.",
+  "revision": 3,
+  "supersedes": "v2 (BTC-only bounded paper; additional pairs + FVG/OB PENDING OWNER APPROVAL).",
   "status": {
-    "alpaca_paper": "APPROVED_BY_OWNER for bounded paper-only testing (owner directive 2026-10-21: pick correct bounded settings and proceed with paper-only startup checks).",
-    "live_trading": "NOT APPROVED — forbidden. Requires separate explicit owner approval + clean multi-week paper reconciliation.",
-    "additional_pairs_and_fvg_ob": "PENDING OWNER APPROVAL — stays disabled until each strategy is backtested for the intended pairs and passes its own acceptance + risk checks."
+    "alpaca_paper": "APPROVED_BY_OWNER for autonomous paper execution of eligible strategies under the bounded PAPER_AUTONOMOUS policy (owner directive 2026-10-21: explicit authorization for automatic BUY/SELL/HOLD/EXIT on eligible crypto; no per-trade or per-coin approval required).",
+    "live_trading": "NOT APPROVED \u2014 forbidden under any circumstances. Requires separate explicit owner approval + clean multi-week live-equivalent reconciliation.",
+    "additional_pairs": "APPROVED_BY_OWNER for PAPER experimental execution (ETH/XRP/DOT/LINK on the daily Z-score as labeled EXPERIMENTAL_PAPER). Enabled only for pairs that pass tradability/data/liquidity/cost/risk gates.",
+    "usdt": "STATUS_ONLY \u2014 not traded; requires a demonstrated cost-aware stablecoin strategy first.",
+    "fvg_ob": "RESEARCH_ONLY \u2014 5M/1H sequence cannot be executed inside the single 1D authoritative executor without altering BTC's model; documented as a limitation rather than faked. Relaxed (negative-after-fees) variant stays DISABLED."
   },
   "approved_by": "VishalRajExe (owner) for PAPER only",
   "approved_on": "2026-10-21",
   "scope": {
-    "mode": "paper_only",
+    "mode": "paper_only_autonomous",
     "endpoint": "https://paper-api.alpaca.markets",
     "real_money": false,
-    "live_baseline_pair": "BTC/USD",
-    "live_baseline_strategy": "BtcZScore",
-    "note": "BTC keeps its existing Z-score baseline. New strategies are research/pending, not live."
+    "baseline_pair": "BTC/USD",
+    "baseline_strategy": "BtcZScore",
+    "experimental_pairs": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD"],
+    "status_only_pairs": ["USDT/USD"],
+    "executor": "single Freqtrade PaperAutonomous dispatcher; no second order executor; the Telegram monitor is read-only."
   },
   "bounded_limits": {
-    "stake_amount_usd_per_trade": 5000,
-    "max_open_trades": 1,
-    "available_capital_usd": 100000,
-    "max_total_exposure_usd": 5000,
-    "stoploss": -0.35,
-    "rationale": "stake_amount is a FIXED cap (never 'unlimited'). With max_open_trades=1, worst-case new-position exposure is 5000 USD (~5% of a 100k paper account), independent of account growth. The 0.35 stoploss further bounds per-trade loss. This is deliberately conservative for paper validation and is raised ONLY by a new owner-approved revision."
+    "source_of_truth": "app/configs/paper_risk_policy.json and app/configs/strategy_registry.json (validated by preflight).",
+    "btc_max_stake_usd": 5000,
+    "alt_max_stake_usd": 1000,
+    "alt_max_planned_loss_usd": 500,
+    "max_total_open_exposure_usd": 10000,
+    "max_total_exposure_pct_equity": 0.10,
+    "max_concurrent_positions": 5,
+    "max_one_position_per_pair": true,
+    "daily_equity_loss_breaker": 0.02,
+    "peak_to_trough_drawdown_breaker": 0.05,
+    "capital_basis": "cash_and_equity_not_buying_power"
   },
   "baseline_strategy_parameters": {
     "strategy": "BtcZScore",
@@ -35,25 +44,23 @@
     "startup_candle_count": 400,
     "can_short": false,
     "leverage": 1.0,
-    "threshold_status": "CANDIDATE defaults, NOT source-verified. Kept for research/observation; owner approves running them in PAPER only. Source '65.92% CAGR' claim is NOT reproduced and NOT accepted as fact."
+    "preserved_by": "PaperAutonomous subclasses BtcZScore and delegates the BTC/USD branch to the unchanged parent logic; the BTC math, thresholds, timeframe, and version are not modified.",
+    "threshold_status": "CANDIDATE defaults, NOT source-verified. The '65.92% CAGR' source claim is NOT reproduced and NOT accepted as fact. Alts reuse the daily Z-score formula as an EXPERIMENT and are NOT assumed profitable from BTC's results."
   },
-  "protections": [
-    { "method": "CooldownPeriod", "stop_duration_candles": 2, "purpose": "prevent re-entry immediately after an exit" },
-    { "method": "MaxDrawdown", "lookback_period_candles": 90, "trade_limit": 5, "stop_duration_candles": 7, "max_allowed_drawdown": 0.25, "purpose": "halt trading after 25% account drawdown over ~90 days" },
-    { "method": "StoplossGuard", "lookback_period_candles": 30, "trade_limit": 3, "stop_duration_candles": 14, "only_per_pair": true, "purpose": "rest a pair after 3 stoplosses in 30 candles" }
-  ],
   "guardrails": [
-    "Spot only, long-only, unleveraged; no borrowing, no margin, no shorts.",
-    "AI/research layer may annotate only; it must never change approved rules, sizing, or place orders.",
-    "One authoritative order executor; the app must never auto-switch to live.",
-    "Reconciliation must prove liveness + freshness + broker + identity-reconciled orders and can never report HEALTHY while offline/stale/drifted.",
-    "Any new numeric limit, timeframe, pair, or strategy requires a new owner-approved revision of THIS file.",
-    "Preflight must return TRADING READY: True with zero BLOCK and no 'unlimited' stake before any paper start."
+    "Spot only, long-only, unleveraged; no borrowing, no margin, no shorts, no futures, no leverage.",
+    "Autonomous within policy != unrestricted: every entry is validated against per-position, portfolio, exposure, data-freshness, and kill-switch checks; violations are rejected and explained on Telegram.",
+    "Never report a trade as FILLED until the broker confirms the fill.",
+    "One authoritative order executor; no duplicate orders for the same pair; Z-score and FVG signals must not both open the same pair.",
+    "Reconciliation must prove liveness + freshness + broker + identity-reconciled orders; can never report HEALTHY while offline/stale/drifted.",
+    "Hard risk limits, broker reconciliation, data-quality checks, and paper-only restriction may NEVER be bypassed to make the bot start or trade.",
+    "Live trading stays blocked under any circumstances; the app must never auto-switch to live.",
+    "Any new numeric limit, timeframe, pair, or strategy requires a new owner-approved revision of THIS file."
   ],
-  "pending_items": [
-    "Per-pair FVG/OB risk profile (bounded stake, stop buffer, max concurrent, portfolio exposure caps) — after backtest.",
-    "Enabled multi-asset whitelist — validated against live Alpaca asset metadata + liquidity ranking.",
-    "Dashboard multi-asset/multi-strategy redesign — Phase follow-up.",
-    "Full 5M/1H Alpaca-parity backtest (blocked by Freqtrade 2026.9 Alpaca backtest auth limitation; research proxy used and labelled)."
+  "circuit_breaker_recovery": "On a 2% daily-equity-loss or 5% peak-to-trough-drawdown breach: block new entries, cancel pending entries where supported, reconcile, follow the tested emergency-exit policy, persist the kill switch, send a CRITICAL Telegram message, and require explicit manual recovery.",
+  "remaining_items": [
+    "Asset-specific backtest for each alt before graduating EXPERIMENTAL_PAPER to a non-experimental label.",
+    "FVG/OB executor path if a tested architecture can preserve the exact 5M/1H sequence without changing BTC's model (currently documented as a limitation).",
+    "USDT cost-aware strategy research before enabling."
   ]
 }

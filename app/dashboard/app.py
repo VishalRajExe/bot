@@ -19,11 +19,18 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import sys
 ROOT = Path(__file__).resolve().parents[2]
+APP = ROOT / "app"
+sys.path.insert(0, str(APP))
+from risk import policy as risk_policy  # noqa: E402  (single source of truth)
+
 LEDGER_DB = ROOT / "app" / "ledger" / "unbound.db"
 FEATHER = ROOT / "app" / "user_data" / "data" / "binance" / "BTC_USDT-1d.feather"
+STATUS_STATE = APP / "state" / "crypto_status.json"
 
-# Candidate risk limits (NOT enforced in research mode; owner approval required).
+# Candidate risk limits (research history). The ENFORCED bounded paper policy is in
+# app/configs/paper_risk_policy.json — see the "Autonomous Pairs" tab.
 CANDIDATE_LIMITS = {
     "Max account drawdown": "25%",
     "Per-trade risk": "100% of equity (single position, spot)",
@@ -234,6 +241,42 @@ def load_paper_trades():
     return df if not df.empty else None
 
 
+@st.cache_data(ttl=15)
+def load_risk_state():
+    """Read-only risk control-plane state: kill switch, equity snapshot, rejections."""
+    out = {"blocked": False, "block_info": {}, "equity": {}, "rejections": []}
+    try:
+        out["block_info"] = risk_policy.is_blocked()
+        out["blocked"] = bool(out["block_info"].get("blocked"))
+        out["equity"] = risk_policy.read_json(risk_policy.equity_path()) or {}
+        items = risk_policy.read_json(risk_policy.rejections_path()).get("items", [])
+        out["rejections"] = list(reversed(items[-20:]))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+@st.cache_data(ttl=15)
+def load_pair_overview():
+    """Registry + latest monitor signal snapshot merged per pair. Read-only."""
+    reg = risk_policy.registry()
+    snap = risk_policy.read_json(STATUS_STATE) or {}
+    rows = []
+    for pair, entry in (reg.get("pairs") or {}).items():
+        st_ = snap.get(pair, {})
+        rows.append({
+            "pair": pair,
+            "status": entry.get("status"),
+            "strategy": entry.get("strategy"),
+            "version": entry.get("version"),
+            "tradeable": "YES" if entry.get("tradeable") else "NO",
+            "max_stake_usd": (entry.get("risk") or {}).get("max_stake_usd"),
+            "last_signal": st_.get("signal", "—"),
+            "last_update": str(st_.get("asof", ""))[:19].replace("T", " ") or "—",
+        })
+    return pd.DataFrame(rows)
+
+
 # ----------------------------- UI -----------------------------
 st.markdown("## UnboundBot · Regime Trader")
 m = load_metrics()
@@ -276,8 +319,8 @@ k[3].metric("Win rate", f"{winrate:,.1f}%")
 k[4].metric("Max drawdown", f"{maxdd:,.1f}%")
 k[5].metric("Sharpe", f"{(m.get('sharpe') or 0):,.2f}")
 
-tab_eq, tab_reg, tab_trades, tab_ai, tab_risk, tab_alpaca, tab_obs = st.tabs(
-    ["Equity & Drawdown", "Regime / Signal", "Trade Ledger", "AI Learning Notes", "Risk & Model", "Alpaca Paper (live)", "Observation"]
+tab_eq, tab_reg, tab_trades, tab_ai, tab_risk, tab_alpaca, tab_auto, tab_obs = st.tabs(
+    ["Equity & Drawdown", "Regime / Signal", "Trade Ledger", "AI Learning Notes", "Risk & Model", "Alpaca Paper (live)", "Autonomous Pairs", "Observation"]
 )
 
 with tab_eq:
@@ -376,6 +419,50 @@ with tab_alpaca:
     else:
         st.warning(f"Alpaca paper account unavailable: {ap['reason'] or 'unknown'}")
         st.caption("The bot being ONLINE below is independent; this panel only reads the account.")
+
+with tab_auto:
+    st.markdown("**Autonomous paper execution** — pair→strategy registry, bounded risk, live signals "
+                "(read-only; orders are placed only by the single Freqtrade executor)")
+    rs = load_risk_state()
+    if rs["blocked"]:
+        st.badge("KILL SWITCH ACTIVE — new entries blocked", color="red")
+        st.write(rs["block_info"])
+    else:
+        st.badge("Kill switch: OFF — entries auto-approved within bounded policy", color="green")
+    eqsnap = rs["equity"] or {}
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("Account equity", f"${float(eqsnap.get('equity') or 0):,.0f}",
+              help=f"snapshot @ {str(eqsnap.get('asof',''))[:19]} (maintained by crypto_status_monitor)")
+    e2.metric("Start-of-day equity", f"${float(eqsnap.get('sod_equity') or 0):,.0f}")
+    e3.metric("Peak equity", f"${float(eqsnap.get('peak_equity') or 0):,.0f}")
+    _eq = float(eqsnap.get("equity") or 0)
+    _sod = float(eqsnap.get("sod_equity") or 0)
+    _dd = (1 - _eq / _sod) * 100 if _sod > 0 and _eq > 0 else 0.0
+    e4.metric("Daily equity Δ", f"-{_dd:,.2f}%" if _dd > 0 else f"{abs(_dd):,.2f}%",
+              help="breaker thresholds: daily −2% · peak-to-trough −5%")
+    st.divider()
+    po = load_pair_overview()
+    st.dataframe(po, use_container_width=True, hide_index=True)
+    st.caption("EXPERIMENTAL_PAPER pairs gather forward-test data only — not proven profitable. "
+               "STATUS_ONLY / RESEARCH_ONLY pairs never generate orders. "
+               "last_signal comes from the read-only monitor snapshot (crypto_status.json).")
+    st.markdown("**Bounded paper limits** (enforced by `app/risk/policy.py` at every entry)")
+    pol = risk_policy.policy().get("portfolio", {})
+    st.json({
+        "max_total_open_exposure_usd": pol.get("max_total_open_exposure_usd"),
+        "max_total_exposure_pct_equity": pol.get("max_total_exposure_pct_equity"),
+        "max_concurrent_positions": pol.get("max_concurrent_positions"),
+        "max_one_position_per_pair": pol.get("max_one_position_per_pair"),
+        "btc_max_stake_usd": risk_policy.max_stake_usd("BTC/USD"),
+        "alt_max_stake_usd": risk_policy.max_stake_usd("ETH/USD"),
+        "alt_max_planned_loss_usd": risk_policy.max_planned_loss_usd("ETH/USD"),
+        "leverage_shorts_futures": "PROHIBITED (paper spot long only)",
+    })
+    if rs["rejections"]:
+        st.markdown("**Recent risk rejections** (executor veto log — never shown as fills)")
+        st.dataframe(pd.DataFrame(rs["rejections"]), use_container_width=True, hide_index=True, height=200)
+    else:
+        st.caption("No risk rejections logged — every eligible entry so far passed the bounded checks.")
 
 with tab_obs:
     st.markdown("**Phase 10 — Paper observation harness** · read-only (populated by `app/scripts/reconcile.py`)")

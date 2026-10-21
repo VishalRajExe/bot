@@ -49,3 +49,48 @@ def test_fvg_ob_setup_renders_all_steps_and_rr():
 def test_missing_fields_do_not_crash():
     msg = NF.format_fvg_ob_setup({"pair": "X/USD"})
     assert "X/USD" in msg and "n/a" in msg
+
+
+def test_asset_status_is_per_asset_and_distinguishes_fill_from_signal():
+    asset = {
+        "symbol": "BTC/USD", "status": "ACTIVE_BASELINE", "status_label": "ACTIVE (baseline)",
+        "strategy": "BtcZScore", "version": "btc-1d-z65", "signal": "BUY", "signal_ts": "2026-10-21",
+        "candle_ts": "2026-10-20", "price": 83360.0,
+        "indicators": {"zscore": 0.52, "bull_threshold": 0.5},
+        "position": {"qty": 0.06, "entry": 80000.0, "stop": 62000.0, "tp": None, "upnl": 200.0},
+        "risk": {"decision": "AUTO-APPROVED", "reason": "within bounded paper policy"},
+        "order_state": "OPEN (confirmed filled)",
+    }
+    msg = NF.format_asset_status(asset)
+    assert "BTC/USD" in msg
+    assert "[BUY]" in msg
+    assert "ACTIVE (baseline)" in msg
+    assert "BtcZScore" in msg
+    assert "confirmed filled" in msg          # fill is stated as fill
+    assert "AUTO-APPROVED" in msg
+    assert "unrealized P&L" in msg
+
+
+def test_asset_status_signal_not_reported_as_fill():
+    asset = {"symbol": "ETH/USD", "status_label": "EXPERIMENTAL (paper)", "signal": "BUY",
+             "strategy": "DailyZScoreAlt", "version": "alt-1d-z65", "price": 2500.0,
+             "indicators": {"zscore": 0.61}, "position": None,
+             "risk": {"decision": "REJECTED EXPOSURE_CAP", "reason": "would exceed cap"},
+             "order_state": "no open position"}
+    msg = NF.format_asset_status(asset)
+    # a signal with a risk rejection must NOT read as a fill
+    assert "no open position" in msg
+    assert "REJECTED" in msg
+    assert "filled" not in msg.lower()
+
+
+def test_status_only_asset_shows_monitor_and_not_traded():
+    asset = {"symbol": "USDT/USD", "status_label": "STATUS-ONLY (not traded)",
+             "strategy": None, "version": "n/a", "signal": "MONITOR",
+             "note": "stablecoin; not enabled", "position": None,
+             "risk": {"decision": "NOT TRADED", "reason": "status-only"},
+             "order_state": "no open position"}
+    msg = NF.format_asset_status(asset)
+    assert "USDT/USD" in msg
+    assert "STATUS-ONLY" in msg
+    assert "NOT TRADED" in msg

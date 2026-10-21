@@ -24,6 +24,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PAPER_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
 RISK_APPROVAL = ROOT / "app" / "configs" / "risk_approval.json"
+sys.path.insert(0, str(ROOT / "app"))
+from risk import policy as rp  # noqa: E402  independent paper-risk layer
 
 PAPER_HOST = "paper-api.alpaca.markets"
 LIVE_HOSTS = ("api.alpaca.markets", "trade-polygon", "live")
@@ -123,7 +125,7 @@ def load_strategy_meta() -> dict:
             "bull_threshold": None, "exit_threshold": None,
             "protections_count": 0, "timeframe": None, "startup_candle_count": None}
     try:
-        from BtcZScore import BtcZScore as S  # noqa: E402
+        from PaperAutonomous import PaperAutonomous as S  # noqa: E402  (subclasses BtcZScore)
         meta["can_short"] = bool(getattr(S, "can_short", False))
         meta["stoploss"] = getattr(S, "stoploss", None)
         meta["bull_threshold"] = getattr(S, "bull_threshold", None)
@@ -135,10 +137,48 @@ def load_strategy_meta() -> dict:
             meta["protections_count"] = len(prot)
         except TypeError:
             fget = getattr(S.__dict__.get("protections", None), "fget", None)
-            meta["protections_count"] = len(fget(None)) if fget else 0
+            meta["protections_count"] = len(fget(None)) if fget else len(S.protections.fget(None))
     except Exception as e:  # noqa: BLE001
         meta["load_error"] = f"{type(e).__name__}: {str(e)[:120]}"
     return meta
+
+
+def audit_risk_layer(cfg: dict) -> list[dict]:
+    """Validate the paper-risk policy + pair->strategy registry + whitelist consistency.
+    Every problem here is a BLOCK: the executor must not start with an unbounded,
+    contradictory, or un-vetted risk configuration."""
+    out: list[dict] = []
+    try:
+        pol_problems = rp.validate_policy(rp.policy())
+    except Exception as e:  # noqa: BLE001
+        pol_problems = [f"policy load failed: {type(e).__name__}: {e}"]
+    for p in pol_problems:
+        out.append({"level": "BLOCK", "code": "POLICY_INVALID", "message": p})
+
+    try:
+        reg_problems = rp.validate_registry(rp.registry())
+    except Exception as e:  # noqa: BLE001
+        reg_problems = [f"registry load failed: {type(e).__name__}: {e}"]
+    for p in reg_problems:
+        out.append({"level": "BLOCK", "code": "REGISTRY_INVALID", "message": p})
+
+    try:
+        cfg_problems = rp.validate_config(cfg)
+    except Exception as e:  # noqa: BLE001
+        cfg_problems = [f"config cross-check failed: {type(e).__name__}: {e}"]
+    for p in cfg_problems:
+        out.append({"level": "BLOCK", "code": "CONFIG_RISK_MISMATCH", "message": p})
+
+    if not out:
+        cap = rp.policy().get("portfolio", {}).get("max_total_open_exposure_usd")
+        mot = rp.policy().get("portfolio", {}).get("max_concurrent_positions")
+        out.append({"level": "OK", "code": "AUTONOMOUS_PAPER_POLICY",
+                    "message": f"bounded policy active: exposure<={cap} USD, <={mot} positions, "
+                               f"per-pair stakes from registry; no per-trade approval required"})
+        out.append({"level": "OK", "code": "TRADEABLE_SET",
+                    "message": "tradeable: " + ", ".join(rp.tradeable_pairs()) +
+                               " | status-only: " + ", ".join(rp.status_only_pairs())})
+    return out
 
 
 def main() -> int:
@@ -150,6 +190,10 @@ def main() -> int:
     cfg = json.loads(PAPER_CFG.read_text(encoding="utf-8"))
     meta = load_strategy_meta()
     ready, findings = audit_config(cfg, meta)
+    risk_findings = audit_risk_layer(cfg)
+    findings = findings + risk_findings
+    if any(x["level"] == "BLOCK" for x in risk_findings):
+        ready = False
 
     print(f"Preflight (config={PAPER_CFG.name})")
     print(f"strategy_meta={meta}")

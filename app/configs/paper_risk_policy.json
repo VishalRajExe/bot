@@ -1,0 +1,64 @@
+{
+  "_purpose": "Predefined, bounded PAPER_AUTONOMOUS risk policy. The bot executes eligible strategies WITHOUT per-trade or per-coin manual approval, but every entry/exit is validated against these hard limits by the independent risk layer (app/risk/policy.py + PaperAutonomous.confirm_trade_entry). This is autonomous execution inside a policy, not unrestricted trading. PAPER ONLY.",
+  "revised": "2026-10-21",
+  "authorization": {
+    "paper_autonomous": "APPROVED_BY_OWNER (directive 2026-10-21): automatic BUY/SELL/HOLD/EXIT for eligible crypto in Alpaca PAPER without per-trade approval.",
+    "live_trading": "NOT APPROVED under any circumstance.",
+    "manual_approval_per_trade": false
+  },
+  "hard_prohibitions": {
+    "live_trading": true,
+    "leverage": true,
+    "futures": true,
+    "short_selling": true,
+    "margin_borrowing": true,
+    "transfers": true,
+    "withdrawals": true,
+    "averaging_down_martingale": true
+  },
+  "per_position": {
+    "BTC/USD": { "max_stake_usd": 5000 },
+    "_default": { "max_stake_usd": 1000, "max_planned_loss_usd": 500 },
+    "sizing": "Quantity derived from the actual stop distance where applicable; stake is reduced further if the stop distance would breach max_planned_loss_usd."
+  },
+  "portfolio": {
+    "max_total_open_exposure_usd": 10000,
+    "max_total_exposure_pct_equity": 0.10,
+    "exposure_rule": "effective cap = min(max_total_open_exposure_usd, max_total_exposure_pct_equity * current_paper_equity)",
+    "max_concurrent_positions": 5,
+    "max_one_position_per_pair": true,
+    "capital_basis": "cash_and_equity",
+    "never_use_buying_power": true,
+    "reported_buying_power_note": "The paper account may report ~$400,000 buying power. That is NOT usable: the independent $10,000 / 10%-equity exposure cap is the real bound."
+  },
+  "circuit_breakers": {
+    "daily_equity_loss_pct": 0.02,
+    "peak_to_trough_drawdown_pct": 0.05,
+    "on_trigger": [
+      "block_new_entries",
+      "cancel_pending_entry_orders_where_supported",
+      "reconcile_actual_orders_and_positions",
+      "emergency_exit_open_positions_per_tested_policy",
+      "persist_kill_switch",
+      "send_critical_telegram",
+      "require_explicit_manual_recovery"
+    ],
+    "recovery": "manual_only",
+    "disclaimer": "A loss limit does not guarantee an exact maximum loss; slippage, gaps, API failures and execution latency can produce worse results."
+  },
+  "state_files": {
+    "kill_switch": "app/state/kill_switch.json",
+    "equity": "app/state/equity.json",
+    "risk_rejections": "app/state/risk_rejections.json",
+    "trade_review": "app/state/trade_review.json"
+  },
+  "fail_closed": [
+    "Unsupported or non-whitelisted symbol.",
+    "Missing required risk parameter.",
+    "Stale or unavailable market data / equity snapshot.",
+    "Risk cannot be calculated.",
+    "An unresolved order or open position already exists for the pair.",
+    "Any portfolio or per-position limit would be breached."
+  ],
+  "configurability": "All amounts and percentages above are the source of truth and are validated at startup by app/scripts/preflight.py. Changing any limit requires a new owner-approved revision."
+}

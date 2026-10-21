@@ -1,0 +1,122 @@
+{
+  "_purpose": "Pair-to-strategy registry for the single authoritative PAPER executor. Maps every monitored pair to its assigned strategy, timeframe, version, tradeable state, and bounded risk profile. Consumed by app/user_data/strategies/PaperAutonomous.py, app/scripts/preflight.py, and app/scripts/crypto_status_monitor.py. BTC's baseline math is NOT defined here \u2014 it lives in BtcZScore and is preserved by subclassing.",
+  "revised": "2026-10-21",
+  "executor_strategy": "PaperAutonomous",
+  "executor_timeframe": "1d",
+  "authorization": "Autonomous PAPER BUY/SELL/HOLD/EXIT for eligible non-BTC crypto under app/configs/paper_risk_policy.json (owner directive 2026-10-21). PAPER ONLY \u2014 not live.",
+  "pairs": {
+    "BTC/USD": {
+      "status": "ACTIVE_BASELINE",
+      "tradeable": true,
+      "experimental": false,
+      "strategy": "BtcZScore",
+      "strategy_family": "daily_zscore",
+      "timeframe": "1d",
+      "version": "btc-1d-z65-b0.5-e0.0",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 5000,
+        "stoploss": -0.35,
+        "bull_threshold": 0.5,
+        "exit_threshold": 0.0,
+        "note": "Baseline preserved exactly (EMA65/STD65/Z/transitions/daily TF/version). Do not increase BTC stake."
+      }
+    },
+    "ETH/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "strategy": "DailyZScoreAlt",
+      "strategy_family": "daily_zscore",
+      "timeframe": "1d",
+      "version": "alt-1d-z65-v0-experimental",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 1000,
+        "max_planned_loss_usd": 500,
+        "stoploss": -0.35,
+        "bull_threshold": 0.5,
+        "exit_threshold": 0.0,
+        "note": "EXPERIMENTAL paper strategy to gather forward-test data. Thresholds are separate starting parameters, NOT inherited from BTC as proof of profitability. Asset-specific backtest pending."
+      }
+    },
+    "XRP/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "strategy": "DailyZScoreAlt",
+      "strategy_family": "daily_zscore",
+      "timeframe": "1d",
+      "version": "alt-1d-z65-v0-experimental",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 1000,
+        "max_planned_loss_usd": 500,
+        "stoploss": -0.35,
+        "bull_threshold": 0.5,
+        "exit_threshold": 0.0,
+        "note": "EXPERIMENTAL paper. Wider observed spread than BTC; still within the 0.50% cost gate. Asset-specific backtest pending."
+      }
+    },
+    "DOT/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "strategy": "DailyZScoreAlt",
+      "strategy_family": "daily_zscore",
+      "timeframe": "1d",
+      "version": "alt-1d-z65-v0-experimental",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 1000,
+        "max_planned_loss_usd": 500,
+        "stoploss": -0.35,
+        "bull_threshold": 0.5,
+        "exit_threshold": 0.0,
+        "note": "EXPERIMENTAL paper. Asset-specific backtest pending."
+      }
+    },
+    "LINK/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "strategy": "DailyZScoreAlt",
+      "strategy_family": "daily_zscore",
+      "timeframe": "1d",
+      "version": "alt-1d-z65-v0-experimental",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 1000,
+        "max_planned_loss_usd": 500,
+        "stoploss": -0.35,
+        "bull_threshold": 0.5,
+        "exit_threshold": 0.0,
+        "note": "EXPERIMENTAL paper. Asset-specific backtest pending."
+      }
+    },
+    "USDT/USD": {
+      "status": "STATUS_ONLY",
+      "tradeable": false,
+      "experimental": false,
+      "strategy": null,
+      "strategy_family": "none",
+      "timeframe": "1d",
+      "version": "n/a",
+      "eligible": true,
+      "risk": {},
+      "reason_not_traded": "Stablecoin pair. No specific, cost-aware strategy has been demonstrated for it. Monitored only until research justifies enabling."
+    },
+    "FVG/OB (research)": {
+      "status": "RESEARCH_ONLY",
+      "tradeable": false,
+      "experimental": true,
+      "strategy": "FvgOb",
+      "strategy_family": "fvg_ob_htf1h_ltf5m",
+      "timeframe": "5m/1h",
+      "version": "fvg-ob-strict-v1",
+      "eligible": false,
+      "risk": {},
+      "reason_not_traded": "Executed on 1H/5M; the single authoritative executor runs a 1D strategy (BTC baseline preserved). Wiring 5M/1H entries into the same bot would change BTC's execution model, so per owner brief \u00a75 we document the limitation rather than fake an integration. The relaxed (require_overlap=False) variant showed a negative expectancy after fees and stays DISABLED. Strict-sequence forward data collection continues in the read-only layer."
+    }
+  }
+}

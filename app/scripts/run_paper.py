@@ -87,7 +87,7 @@ def main() -> int:
 
     args = [
         str(FT), "trade", "-c", str(CFG), "--userdir", str(USERDIR),
-        "--strategy", "BtcZScore", "--logfile", str(ROOT / ".ft_alpaca.log"),
+        "--strategy", "PaperAutonomous", "--logfile", str(ROOT / ".ft_alpaca.log"),
     ]
     print("launching Alpaca PAPER bot ...")
     proc = subprocess.Popen(args, env=env)

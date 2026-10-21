@@ -97,3 +97,48 @@ def format_fvg_ob_setup(entry: dict[str, Any]) -> str:
 def format_status(*, bot_name: str, state: str, detail: str = "") -> str:
     base = f"[status] {bot_name}: {state}"
     return f"{base} — {detail}" if detail else base
+
+
+def format_asset_status(asset: dict[str, Any]) -> str:
+    """Rich, per-crypto status snapshot. One message per asset (owner brief §9).
+
+    Every field is derived from the actual strategy + live data; nothing is a
+    placeholder. ``order_state`` keeps SUBMITTED/PROPOSED distinct from FILLED so a
+    signal is never mistaken for a confirmed fill.
+    """
+    label = asset.get("status_label", asset.get("status", "MONITORED"))
+    lines = [
+        f"[{asset.get('signal', 'N/A')}] {asset.get('symbol', '?')} — {label}",
+        f"  strategy:  {asset.get('strategy') or 'none'}  [{asset.get('version', 'n/a')}]",
+        f"  signal ts: {_fmt_ts(asset.get('signal_ts'))}  last candle: {_fmt_ts(asset.get('candle_ts'))}",
+    ]
+    price = asset.get("price")
+    lines.append(f"  price:     {_num(price) if isinstance(price, (int, float)) else 'n/a (no valid data)'}")
+    ind = asset.get("indicators") or {}
+    if ind:
+        lines.append("  indicators:")
+        for k, v in ind.items():
+            lines.append(f"    - {k}: {_num(v) if isinstance(v, (int, float)) else v}")
+    pos = asset.get("position")
+    if pos:
+        lines.append(
+            f"  position:  qty {_num(pos.get('qty'), 6)}  entry {_num(pos.get('entry'))} "
+            f"stop {_num(pos.get('stop'))} tp {_num(pos.get('tp'))}"
+        )
+        upnl = pos.get("upnl")
+        if upnl is not None:
+            lines.append(f"  unrealized P&L: {_num(upnl)}")
+        rp = pos.get("realized")
+        if rp is not None:
+            lines.append(f"  realized P&L (this pair): {_num(rp)}")
+    else:
+        lines.append("  position:  none open")
+    risk = asset.get("risk") or {}
+    if risk:
+        lines.append(f"  risk check: {risk.get('decision', 'n/a')} — {risk.get('reason', '')}")
+    if asset.get("order_state"):
+        lines.append(f"  order state: {asset['order_state']}")
+    note = asset.get("note")
+    if note:
+        lines.append(f"  note: {note}")
+    return "\n".join(lines)
