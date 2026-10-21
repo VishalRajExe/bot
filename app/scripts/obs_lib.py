@@ -21,10 +21,31 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[2]
 PAPER_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
+FAST_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.fast.json"
 LEDGER_DB = ROOT / "app" / "ledger" / "unbound.db"
 # Heartbeat/PID file maintained by run_paper.py while the paper bot lives.
 STATE_FILE = ROOT / "app" / "state" / "paper_bot.json"
+FAST_STATE_FILE = ROOT / "app" / "state" / "paper_bot_fast.json"
 ALPACA_FEATHER = ROOT / "app" / "user_data" / "data" / "alpaca" / "BTC_USD-1d.feather"
+
+
+def executors() -> list[dict]:
+    """The two disjoint PAPER order executors and their read-only sources. Each has
+    its OWN trade DB + heartbeat file; observation aggregates across all of them."""
+    return [
+        {"name": "daily", "cfg": PAPER_CFG, "state": STATE_FILE},
+        {"name": "fast", "cfg": FAST_CFG, "state": FAST_STATE_FILE},
+    ]
+
+
+def db_path_from_cfg(cfg_path: Path) -> Path | None:
+    try:
+        db = json.loads(cfg_path.read_text(encoding="utf-8")).get("db_url", "")
+        if db.startswith("sqlite:///"):
+            return Path(db.replace("sqlite:///", ""))
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 # Alpaca PAPER trader host (read-only GETs). Overridable via .env.
 ALPACA_BASE = "https://paper-api.alpaca.markets"
@@ -73,17 +94,15 @@ def load_env() -> None:
             os.environ.setdefault(k.strip(), v.strip())
 
 
-def ft_db_path() -> Path | None:
-    """Resolve the Freqtrade paper trade DB from config db_url, else common spots."""
+def ft_db_path(cfg_path: Path | None = None) -> Path | None:
+    """Resolve a Freqtrade paper trade DB from a config's db_url, else common spots."""
+    cfg_path = cfg_path or PAPER_CFG
     candidates: list[Path] = []
-    try:
-        cfg = json.loads(PAPER_CFG.read_text(encoding="utf-8"))
-        db = cfg.get("db_url", "")
-        if db.startswith("sqlite:///"):
-            candidates.append(Path(db.replace("sqlite:///", "")))
-    except Exception:  # noqa: BLE001
-        pass
-    candidates += [ROOT / "tradesv3.sqlite", ROOT / "app" / "user_data" / "tradesv3.sqlite"]
+    d = db_path_from_cfg(cfg_path)
+    if d:
+        candidates.append(d)
+    if cfg_path == PAPER_CFG:
+        candidates += [ROOT / "tradesv3.sqlite", ROOT / "app" / "user_data" / "tradesv3.sqlite"]
     for c in candidates:
         if c.exists():
             return c
@@ -127,16 +146,34 @@ def _ensure_columns(con: sqlite3.Connection) -> None:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
 
 
-def read_heartbeat() -> dict | None:
-    """Return the paper bot's heartbeat state file, or None if absent/unreadable.
+def read_heartbeat(state_file: Path | None = None) -> dict | None:
+    """Return a paper bot's heartbeat state file, or None if absent/unreadable.
     Expected keys written by run_paper.py: bot_name, pid, started, last_heartbeat
     (ISO-8601 UTC)."""
+    state_file = state_file or STATE_FILE
     try:
-        if STATE_FILE.exists():
-            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        if state_file.exists():
+            return json.loads(state_file.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         return None
     return None
+
+
+def open_stake_by_db(db: Path | None) -> tuple[float, float]:
+    """Read-only (open_stake_usd, open_qty) summed over a Freqtrade trade DB. Returns
+    (0, 0) when the DB does not exist yet (executor never traded). Used to aggregate
+    exposure and portfolio reconciliation ACROSS the two disjoint executors."""
+    if not db or not db.exists():
+        return 0.0, 0.0
+    try:
+        con = ft_connect_ro(db)
+        row = con.execute(
+            "SELECT COALESCE(SUM(stake_amount),0), COALESCE(SUM(amount),0) "
+            "FROM trades WHERE is_open=1").fetchone()
+        con.close()
+        return float(row[0] or 0), float(row[1] or 0)
+    except Exception:  # noqa: BLE001
+        return 0.0, 0.0
 
 
 def latest_candle_age_hours(feather_path: Path | None = None, now=None) -> float | None:

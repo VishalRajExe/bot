@@ -177,6 +177,26 @@ decisions/outcomes. Do not conflate the two.
   READY. Verified live: reconcile HEALTHY (drift 0), bot RUNNING 5 pairs, Telegram per-asset delivered,
   dashboard "Autonomous Pairs" tab browser-verified (0 console errors). **Autonomous ≠ profitable:
   alts are experimental forward-test only; FVG/OB showed no edge; no profitability claimed.**
+- 2026-10-21 **FAST INTRADAY EXECUTOR (owner directive "instant buy sell … carefully strategically").**
+  Owner chose via explicit questions: separate fast bot / 5m timeframe / EMA-cross+volume-surge momentum.
+  TWO disjoint PAPER order executors now run: "daily" = BTC-only 1d `PaperAutonomous` (unchanged baseline,
+  `config.alpaca.paper.json`, `tradesv3.sqlite`, $5000 cap, max_open_trades 1) and "fast" = ETH/XRP/DOT/LINK
+  5m `MomentumAlt` (`config.alpaca.paper.fast.json`, `tradesv3_fast.sqlite`, $1000/pair, max_open_trades 4,
+  stoploss −0.03, intraday protections 2h/24h windows). `MomentumAlt` SUBCLASSES `PaperAutonomous` so the
+  risk veto (`custom_stake_amount`+`confirm_trade_entry`) is reused verbatim (identity-tested); fresh EMA
+  cross-up + volume surge required (never "already above" → no chasing/duplicate entries); BTC baseline and
+  status-only pairs emit nothing from the fast bot. Safety-by-construction: disjoint whitelists +
+  structural worst case 5000+4×1000=9000 ≤ 10000 exposure cap, 1+4=5 positions ≤ 5; `validate_executors`
+  enforces disjoint/union/combined bounds at preflight; cross-executor ledger `app/state/open_exposure.json`
+  (written each sweep by the READ-ONLY monitor) is added to the global exposure check in `confirm_trade_entry`
+  and FAILS CLOSED if missing/stale (>180s). Telegram getUpdates allows only one polling bot → fast config
+  `telegram.enabled=false`; owner still gets fast-trade alerts via monitor sendMessage across both DBs
+  (composite "label:id" event keys). `run_paper.py --fast` launches the fast profile. Ops lesson: stale
+  daily bot holding alts in memory would have double-traded → all stale PIDs stopped, daily relaunched
+  BTC-only BEFORE starting fast. Tests +22 → **126 passed**; preflight TRADING READY both executors;
+  reconcile **HEALTHY** aggregated across both DBs (drift 0); monitor first sweep sent 6 per-asset alerts +
+  wrote the ledger; live signal reads confirm correct states (alts HOLD/FLAT without a fresh cross, BTC
+  unchanged +0.812). **No profitability claimed — 5m forward-test only, fees/slippage drag expected.**
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
@@ -189,6 +209,7 @@ decisions/outcomes. Do not conflate the two.
 - Live dry-run: `freqtrade trade -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --dry-run`
 - Alpaca gate: `python app/scripts/check_alpaca.py`
 - Alpaca paper bot: `python app/scripts/run_paper.py` (injects keys from .env, dry_run=false → paper-api)
+- Alpaca paper FAST bot (5m momentum alts): `python app/scripts/run_paper.py --fast` (telegram off — monitor alerts both DBs)
 - Autonomous per-asset Telegram monitor (READ-ONLY, no orders): `python app/scripts/crypto_status_monitor.py --interval 60 --heartbeat-minutes 60`  ·  kill-switch manual recovery after review: add `--recover-kill-switch`
 - Phase 8 HMM research (non-trading): `python app/research/hmm_regime.py` → artifacts + docs/Phase8_HMM_Report.md
 - Phase 10 reconcile (read-only mirror): `python app/scripts/reconcile.py`  ·  cadence: `python app/scripts/reconcile.py --watch 900`

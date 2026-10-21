@@ -55,6 +55,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 ENV_PATH = ROOT.parent / ".env"
 CFG_PATH = ROOT / "configs" / "config.alpaca.paper.json"
+FAST_CFG_PATH = ROOT / "configs" / "config.alpaca.paper.fast.json"
 DATA_BASE = "https://data.alpaca.markets"
 TRADER_BASE = "https://paper-api.alpaca.markets"
 STATE_PATH = ROOT / "state" / "crypto_status.json"
@@ -107,14 +108,30 @@ def monitored_pairs() -> list[str]:
     return out
 
 
-def ft_db_path() -> Path | None:
+def _db_from_cfg(cfg_path: Path) -> Path | None:
     try:
-        url = json.loads(CFG_PATH.read_text(encoding="utf-8")).get("db_url", "")
+        url = json.loads(cfg_path.read_text(encoding="utf-8")).get("db_url", "")
         if url.startswith("sqlite:///"):
             return Path(url.replace("sqlite:///", ""))
     except Exception:  # noqa: BLE001
         pass
     return None
+
+
+def ft_db_paths() -> dict[str, Path]:
+    """label -> trade DB for BOTH executors. Only paths that exist are returned (an
+    executor that has not traded yet has no DB). Used to read positions/emit trade
+    events across the daily and fast processes together."""
+    out: dict[str, Path] = {}
+    for label, cfg in (("daily", CFG_PATH), ("fast", FAST_CFG_PATH)):
+        p = _db_from_cfg(cfg)
+        if p and p.exists():
+            out[label] = p
+    return out
+
+
+def ft_db_path() -> Path | None:
+    return _db_from_cfg(CFG_PATH)
 
 
 def open_positions(db: Path | None) -> dict[str, dict]:
@@ -151,7 +168,59 @@ def open_positions(db: Path | None) -> dict[str, dict]:
     return out
 
 
-def fetch_signal(hdrs: dict, pair: str) -> dict:
+def _bars(hdrs: dict, pair: str, timeframe: str, start: str) -> pd.DataFrame:
+    r = requests.get(f"{DATA_BASE}/v1beta3/crypto/us/bars", headers=hdrs,
+                     params={"symbols": pair, "timeframe": timeframe, "start": start}, timeout=30)
+    r.raise_for_status()
+    bars = (r.json().get("bars", {}) or {}).get(pair) or []
+    if not bars:
+        return pd.DataFrame()
+    df = pd.DataFrame(bars)
+    df["date"] = pd.to_datetime(df["t"], utc=True)
+    return df.set_index("date")
+
+
+def _fetch_momentum(hdrs: dict, pair: str) -> dict:
+    """Intraday momentum read (matches MomentumAlt): fresh EMA cross + volume surge."""
+    entry = policy.pair_entry(pair).get("risk", {})
+    m = entry.get("momentum", {})
+    fast_p = int(m.get("ema_fast", 9))
+    slow_p = int(m.get("ema_slow", 21))
+    vol_p = int(m.get("vol_window", 20))
+    start = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    df = _bars(hdrs, pair, "5Min", start)
+    if len(df) < slow_p + vol_p + 2:
+        return {"signal": "N/A", "reason": "insufficient 5m history (data-quality gate)",
+                "indicators": {}, "price": None, "candle_ts": None}
+    now5 = pd.Timestamp.now(tz="UTC").floor("5min")
+    df = df[df.index < now5]           # drop the current partial candle
+    if len(df) < slow_p + vol_p + 2:
+        return {"signal": "N/A", "reason": "insufficient completed 5m candles",
+                "indicators": {}, "price": None, "candle_ts": None}
+    close = df["c"].to_numpy(dtype=float)
+    vol = df["v"].to_numpy(dtype=float)
+    ef = talib.EMA(close, timeperiod=fast_p)
+    es = talib.EMA(close, timeperiod=slow_p)
+    volma = pd.Series(vol).rolling(vol_p).mean().to_numpy()
+    f, s = float(ef[-1]), float(es[-1])
+    pf, ps = float(ef[-2]), float(es[-2])
+    vsurge = bool(vol[-1] > (volma[-1] if not np.isnan(volma[-1]) else 0))
+    if f > s and pf <= ps and vsurge:
+        signal, reason = "BUY", f"fresh ema{fast_p}x{slow_p} cross-up + volume surge"
+    elif f < s and pf >= ps:
+        signal, reason = "SELL", f"ema{fast_p} crossed back below ema{slow_p} (exit)"
+    elif f > s:
+        signal, reason = "HOLD", "momentum on — fast EMA above slow"
+    else:
+        signal, reason = "FLAT", "no position — fast EMA below slow"
+    return {"signal": signal, "reason": reason, "price": float(close[-1]),
+            "candle_ts": str(df.index[-1].strftime("%Y-%m-%dT%H:%M")),
+            "indicators": {"ema_fast": round(f, 6), "ema_slow": round(s, 6),
+                           "ema_fast_period": fast_p, "ema_slow_period": slow_p,
+                           "vol_ratio": round(float(vol[-1] / volma[-1]), 3) if volma[-1] else None}}
+
+
+def _fetch_daily_zscore(hdrs: dict, pair: str) -> dict:
     start = (datetime.now(timezone.utc) - timedelta(days=500)).strftime("%Y-%m-%dT%H:%M:%SZ")
     r = requests.get(f"{DATA_BASE}/v1beta3/crypto/us/bars", headers=hdrs,
                      params={"symbols": pair, "timeframe": "1D", "start": start}, timeout=30)
@@ -186,6 +255,15 @@ def fetch_signal(hdrs: dict, pair: str) -> dict:
             "candle_ts": str(df.index[-1].strftime("%Y-%m-%d")),
             "indicators": {"zscore": round(cur, 3), "bull_threshold": bull,
                            "exit_threshold": exit_th, "ema65": round(float(ema[-1]), 4)}}
+
+
+def fetch_signal(hdrs: dict, pair: str) -> dict:
+    """Evaluate the ACTUAL live signal for a pair using its executor's real method:
+    5m momentum for fast-executor alts, daily Z-score for the BTC baseline."""
+    family = policy.pair_entry(pair).get("strategy_family", "daily_zscore")
+    if family == "momentum_ema_vol":
+        return _fetch_momentum(hdrs, pair)
+    return _fetch_daily_zscore(hdrs, pair)
 
 
 def account_equity(hdrs: dict) -> dict:
@@ -300,7 +378,11 @@ def load_state() -> dict:
 def sweep(env: dict, hdrs: dict, pairs: list[str], notify_mode: str) -> int:
     """notify_mode: 'full' (every asset), 'changes' (only assets whose key changed)."""
     state = load_state()
-    positions = open_positions(ft_db_path())
+    dbs = ft_db_paths()
+    positions: dict[str, dict] = {}
+    for _label, db in dbs.items():
+        positions.update(open_positions(db))   # executors are disjoint, so no pair collides
+    write_exposure_ledger(dbs)                 # global cross-executor exposure for the veto
     eqinfo = update_equity_and_breaker(hdrs, env)
     blocked = bool(eqinfo.get("blocked"))
     sent = 0
@@ -318,21 +400,58 @@ def sweep(env: dict, hdrs: dict, pairs: list[str], notify_mode: str) -> int:
         state[pair] = {"key": list(key), "signal": asset["signal"],
                        "asof": datetime.now(timezone.utc).isoformat()}
     policy.write_json(STATE_PATH, state)
-    sent += notify_trade_events(env, ft_db_path())
+    sent += notify_trade_events(env, dbs)
     return sent
 
 
-def notify_trade_events(env: dict, ft_db: Path | None) -> int:
-    """Emoji trade-alert pipeline (owner request 2026-10-21). READ-ONLY on the executor DB.
+def open_stake(db: Path | None) -> float:
+    """Read-only sum of open stake (USD) in one executor DB. 0.0 if DB absent."""
+    if not db or not db.exists():
+        return 0.0
+    try:
+        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
+        v = con.execute("SELECT COALESCE(SUM(stake_amount),0) FROM trades WHERE is_open=1").fetchone()[0]
+        con.close()
+        return float(v or 0)
+    except Exception:  # noqa: BLE001
+        return 0.0
 
-    Diffs the Freqtrade trades table + the risk-rejection log against the last
-    notified watermark (app/state/trade_events.json) and sends one clear message
-    per lifecycle event: 🟢 BUY → ✅ FILLED on a new open trade, 🔴 EXIT → 💰/💸
-    outcome on a close, ⚠️ RISK REJECTED for each new policy veto. A brand-new
-    state file initializes from current data WITHOUT replaying history (no spam
-    across restarts). This monitor still never places or alters an order — the
-    events it reports were decided and executed by the single Freqtrade executor.
+
+def write_exposure_ledger(dbs: dict[str, Path]) -> dict:
+    """Persist the cross-executor open-exposure ledger consumed by every
+    confirm_trade_entry so the SINGLE portfolio cap is enforced GLOBALLY, not per
+    process. Read-only w.r.t. trading: it only records what each executor already
+    holds. Includes both known executor names (a missing DB contributes 0)."""
+    execs = {"daily": 0.0, "fast": 0.0}
+    for label, path in dbs.items():
+        execs[label] = round(open_stake(path), 2)
+    payload = {"executors": execs, "total": round(sum(execs.values()), 2),
+               "asof": datetime.now(timezone.utc).isoformat()}
+    policy.write_json(policy.open_exposure_path(), payload)
+    return payload
+
+
+def notify_trade_events(env: dict, dbs) -> int:
+    """Emoji trade-alert pipeline (owner request 2026-10-21). READ-ONLY on the executor DB(s).
+
+    Diffs the Freqtrade trades table(s) + the risk-rejection log against the last
+    notified watermark (app/state/trade_events.json) and sends one clear message per
+    lifecycle event: 🟢 BUY → ✅ FILLED on a new open trade, 🔴 EXIT → 💰/💸 outcome on
+    a close, ⚠️ RISK REJECTED for each new policy veto. Accepts a single Path, None, or
+    a {label: Path} dict covering BOTH executors (a fast fill then alerts the owner too).
+    With two DBs, ids namespace as "label:id" since each executor has its own
+    autoincrement. A brand-new state file initializes from current data WITHOUT
+    replaying history (no spam across restarts). This monitor still never places or
+    alters an order — the events were decided and executed by the Freqtrade executors.
     """
+    if dbs is None:
+        sources: list[tuple[str | None, Path]] = []
+    elif isinstance(dbs, dict):
+        sources = [(label, p) for label, p in dbs.items()]
+    else:
+        sources = [(None, Path(dbs))]
+    multi = len(sources) > 1
+
     state = policy.read_json(TRADE_EVENTS_PATH)
     rejections = policy.read_json(policy.rejections_path()).get("items", [])
     n = 0
@@ -342,46 +461,50 @@ def notify_trade_events(env: dict, ft_db: Path | None) -> int:
         if send(env, text):
             n += 1
 
-    trades: list[dict] = []
-    if ft_db and ft_db.exists():
-        try:
-            con = sqlite3.connect(f"file:{ft_db.as_posix()}?mode=ro", uri=True)
-            con.row_factory = sqlite3.Row
-            trades = [dict(r) for r in con.execute("SELECT * FROM trades ORDER BY id").fetchall()]
-            con.close()
-        except Exception:  # noqa: BLE001
-            trades = []
+    def _key(label, tid):
+        return f"{label}:{tid}" if multi else tid
+
+    trades: list[tuple[str | None, dict]] = []
+    for label, db in sources:
+        if db and Path(db).exists():
+            try:
+                con = sqlite3.connect(f"file:{Path(db).as_posix()}?mode=ro", uri=True)
+                con.row_factory = sqlite3.Row
+                for r in con.execute("SELECT * FROM trades ORDER BY id").fetchall():
+                    trades.append((label, dict(r)))
+                con.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     known = bool(state.get("known"))
     open_ids = set(state.get("open_ids", []))
     closed_ids = set(state.get("closed_ids", []))
 
     if not known:
-        # First run: adopt current trades as the baseline, then live-track new ones.
-        open_ids = {t["id"] for t in trades if t["is_open"]}
-        closed_ids = {t["id"] for t in trades if not t["is_open"]}
+        open_ids = {_key(l, t["id"]) for l, t in trades if t["is_open"]}
+        closed_ids = {_key(l, t["id"]) for l, t in trades if not t["is_open"]}
         known = True
     else:
-        cur_open = {t["id"] for t in trades if t["is_open"]}
-        cur_closed = {t["id"] for t in trades if not t["is_open"]}
-        for t in trades:
-            tid = t["id"]
-            if t["is_open"] and tid not in open_ids and tid not in closed_ids:
+        cur_open = {_key(l, t["id"]) for l, t in trades if t["is_open"]}
+        cur_closed = {_key(l, t["id"]) for l, t in trades if not t["is_open"]}
+        for label, t in trades:
+            k = _key(label, t["id"])
+            if t["is_open"] and k not in open_ids and k not in closed_ids:
                 _send(format_trade_entry(t))                 # 🟢 BUY (SUBMITTED)
                 _send(format_trade_filled(t))                # ✅ confirmed position record
-                open_ids.add(tid)
-            elif (not t["is_open"]) and tid in open_ids and tid not in closed_ids:
+                open_ids.add(k)
+            elif (not t["is_open"]) and k in open_ids and k not in closed_ids:
                 _send(format_trade_exit(t))                  # 🔴 EXIT observed
                 _send(format_trade_outcome(t))               # 💰/💸 recorded outcome
-                open_ids.discard(tid)
-                closed_ids.add(tid)
+                open_ids.discard(k)
+                closed_ids.add(k)
         # trades that opened AND closed between two polls: report the outcome once
-        for t in trades:
-            tid = t["id"]
-            if (not t["is_open"]) and tid not in closed_ids and tid not in open_ids:
+        for label, t in trades:
+            k = _key(label, t["id"])
+            if (not t["is_open"]) and k not in closed_ids and k not in open_ids:
                 _send(format_trade_outcome(t))
-                closed_ids.add(tid)
-        open_ids = {tid for tid in open_ids if tid in cur_open} | (cur_open - closed_ids)
+                closed_ids.add(k)
+        open_ids = {k for k in open_ids if k in cur_open} | (cur_open - closed_ids)
 
     last_rej = int(state.get("last_rejection_count", 0))
     if len(rejections) > last_rej:
@@ -390,7 +513,7 @@ def notify_trade_events(env: dict, ft_db: Path | None) -> int:
         last_rej = len(rejections)
 
     policy.write_json(TRADE_EVENTS_PATH, {
-        "known": known, "open_ids": sorted(open_ids), "closed_ids": sorted(closed_ids),
+        "known": known, "open_ids": sorted(open_ids, key=str), "closed_ids": sorted(closed_ids, key=str),
         "last_rejection_count": last_rej,
         "asof": datetime.now(timezone.utc).isoformat(),
     })

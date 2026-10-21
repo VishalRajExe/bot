@@ -45,6 +45,10 @@ BROKER_UNREACHABLE = "BROKER_UNREACHABLE"
 REVIEW = "REVIEW"
 CRITICAL = "CRITICAL"
 
+# Each executor has its own autoincrementing trade id, so mirror them into the shared
+# ledger under disjoint id ranges (daily: 1.., fast: 10_000_000+) to avoid collisions.
+_EXECUTOR_ID_BASE = {"daily": 0, "fast": 10_000_000}
+
 
 def _f(x, default=0.0) -> float:
     try:
@@ -166,24 +170,54 @@ def gather_signals(now: datetime | None = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
-    # --- liveness: heartbeat + PID ---
-    hb = O.read_heartbeat()
-    if hb:
-        s["process_alive"] = _pid_alive(hb.get("pid"))
+    # --- liveness: heartbeat + PID across BOTH executors ---
+    # OFFLINE if ANY executor that has a heartbeat file is dead/stale. An executor with
+    # no file yet simply isn't running (not penalised); once started it must stay fresh.
+    ages: list[float] = []
+    any_present = False
+    all_alive = True
+    for ex in O.executors():
+        try:
+            hb = O.read_heartbeat(ex["state"])
+        except TypeError:  # legacy single-DB resolver (no-arg monkeypatch in tests)
+            hb = O.read_heartbeat()
+        if not hb:
+            continue
+        any_present = True
+        alive = _pid_alive(hb.get("pid"))
+        if alive is False:
+            all_alive = False
         try:
             last = datetime.fromisoformat(hb.get("last_heartbeat")).replace(tzinfo=timezone.utc)
-            s["heartbeat_age_s"] = (now - last).total_seconds()
+            ages.append((now - last).total_seconds())
         except Exception:  # noqa: BLE001
-            s["heartbeat_age_s"] = None
+            all_alive = False
+    if any_present:
+        s["heartbeat_age_s"] = max(ages) if ages else None
+        s["process_alive"] = bool(all_alive and (s["heartbeat_age_s"] is not None))
+    else:
+        s["heartbeat_age_s"] = None
+        s["process_alive"] = None
 
     # --- liveness: market data freshness ---
     s["candle_age_h"] = O.latest_candle_age_hours()
 
-    # --- Freqtrade execution record ---
-    db = O.ft_db_path()
-    if db is None:
-        s["ft_db_ok"] = False
-    else:
+    # --- Freqtrade execution record (aggregated across both disjoint DBs) ---
+    dbs = {}
+    for ex in O.executors():
+        try:
+            dbs[ex["name"]] = O.ft_db_path(ex["cfg"])
+        except TypeError:  # legacy single-DB resolver (no-arg monkeypatch in tests)
+            dbs[ex["name"]] = O.ft_db_path()
+    s["trades_rows"] = []
+    s["ft_open_order_ids"] = []
+    any_db_exists = False
+    seen_paths: set = set()
+    for name, db in dbs.items():
+        if db is None or db in seen_paths:
+            continue  # skip a missing DB, and never double-count a shared path
+        seen_paths.add(db)
+        any_db_exists = True
         try:
             c = O.ft_connect_ro(db)
             tabs = _tables(c)
@@ -194,30 +228,29 @@ def gather_signals(now: datetime | None = None) -> dict:
                     "fee_open_currency,fee_close_currency,close_profit,close_profit_abs,"
                     "exit_reason,enter_tag,leverage,is_short,strategy,timeframe "
                     "FROM trades ORDER BY id").fetchall()
-                s["trades_rows"] = [dict(r) for r in rows]
-                s["total_trades"] = len(rows)
-                s["open_trades_list"] = [dict(r) for r in rows if r["is_open"]]
-                s["ft_open_trades"] = len(s["open_trades_list"])
-                s["ft_open_amount"] = sum(_f(r["amount"]) for r in s["open_trades_list"])
-                s["closed_trades"] = sum(1 for r in rows if not r["is_open"])
-                s["realized_abs"] = sum(_f(r["close_profit_abs"]) for r in rows if not r["is_open"])
-                if rows and rows[0]["strategy"]:
-                    s["strategy"] = rows[0]["strategy"]
-            else:
-                s["trades_rows"] = []
+                base = _EXECUTOR_ID_BASE.get(name, 0)  # namespace ids across the two DBs
+                for r in rows:
+                    d = dict(r)
+                    d["id"] = base + int(d["id"])
+                    s["trades_rows"].append(d)
+                s["ft_open_trades"] += sum(1 for r in rows if r["is_open"])
+                s["ft_open_amount"] += sum(_f(r["amount"]) for r in rows if r["is_open"])
+                s["closed_trades"] += sum(1 for r in rows if not r["is_open"])
+                s["realized_abs"] += sum(_f(r["close_profit_abs"]) for r in rows if not r["is_open"])
             if "orders" in tabs:
                 fo = c.execute("SELECT order_id FROM orders WHERE ft_is_open=1").fetchall()
-                s["ft_open_order_ids"] = [r["order_id"] for r in fo]
-                s["ft_open_orders"] = len(fo)
-            else:
-                s["ft_open_order_ids"] = []
+                s["ft_open_order_ids"] += [r["order_id"] for r in fo]
             if "pairlocks" in tabs:
-                s["active_locks"] = c.execute(
+                s["active_locks"] += c.execute(
                     "SELECT COUNT(*) FROM pairlocks WHERE active=1").fetchone()[0]
             c.close()
         except Exception as e:  # noqa: BLE001
             s["ft_db_ok"] = False
-            s["ft_db_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+            s["ft_db_error"] = f"{name}: {type(e).__name__}: {str(e)[:120]}"
+    if not any_db_exists:
+        s["ft_db_ok"] = False
+    s["total_trades"] = len(s["trades_rows"])
+    s["ft_open_orders"] = len(s["ft_open_order_ids"])
 
     # --- broker (Alpaca PAPER, read-only) ---
     st, acct = O.alpaca_get("/v2/account")

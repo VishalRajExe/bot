@@ -50,7 +50,13 @@
     "kill_switch": "app/state/kill_switch.json",
     "equity": "app/state/equity.json",
     "risk_rejections": "app/state/risk_rejections.json",
+    "open_exposure": "app/state/open_exposure.json",
     "trade_review": "app/state/trade_review.json"
+  },
+  "executors": {
+    "note": "Two DISJOINT PAPER order executors run concurrently (owner directive 2026-10-21 to trade the experimental alts fast/intraday). 'daily' = BTC baseline only (1d Z-score, stake 5000). 'fast' = ETH/XRP/DOT/LINK (5m momentum, stake 1000 each). Each Freqtrade process only sees its own trade DB, so the read-only monitor writes app/state/open_exposure.json and every confirm_trade_entry adds the OTHER executor's open stake before the exposure-cap check (fail-closed if the ledger is stale) — the $10k / 10%-equity cap stays global, not per-process. Pair sets are disjoint (no duplicate orders) and the structural worst case is 5000 + 4x1000 = 9000 <= 10000 with 1 + 4 = 5 <= 5 positions.",
+    "daily": { "config": "config.alpaca.paper.json", "strategy": "PaperAutonomous", "timeframe": "1d", "pairs": ["BTC/USD"], "max_open_trades": 1 },
+    "fast": { "config": "config.alpaca.paper.fast.json", "strategy": "MomentumAlt", "timeframe": "5m", "pairs": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD"], "max_open_trades": 4 }
   },
   "fail_closed": [
     "Unsupported or non-whitelisted symbol.",

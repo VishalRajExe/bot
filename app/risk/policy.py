@@ -138,6 +138,29 @@ def would_breach_exposure(open_stake: float, new_stake: float, equity: float | N
     return (open_stake + new_stake) > cap + 1e-9
 
 
+def external_exposure(my_executor: str | None, max_age_s: int = 180) -> dict:
+    """Open stake held by OTHER executors, read from the cross-executor ledger the
+    read-only monitor writes. With more than one order executor (each Freqtrade bot
+    only sees its OWN trade DB), this is what keeps the single portfolio exposure cap
+    global rather than per-process. Fail-closed contract: callers must treat
+    ``known=False`` as 'exposure cannot be determined' and reject the entry (mirrors
+    the fresh-equity requirement, which the same monitor also produces)."""
+    led = read_json(open_exposure_path())
+    asof = led.get("asof")
+    if not led or asof is None:
+        return {"external": 0.0, "known": False, "reason": "no exposure ledger yet (monitor not run)"}
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(asof)).total_seconds()
+    except Exception:  # noqa: BLE001
+        return {"external": 0.0, "known": False, "reason": "unparseable exposure ledger"}
+    if age > max_age_s:
+        return {"external": 0.0, "known": False, "reason": f"exposure ledger stale ({age:.0f}s)"}
+    execs = led.get("executors", {})
+    external = sum(float(v or 0) for name, v in execs.items() if name != my_executor)
+    return {"external": float(external), "known": True, "age_s": round(age),
+            "by_executor": execs}
+
+
 # --------------------------------------------------------------------------- breakers
 def breaker_status(equity: float | None, sod_equity: float | None,
                    peak_equity: float | None) -> dict:
@@ -202,6 +225,10 @@ def equity_path() -> Path:
 
 def rejections_path() -> Path:
     return _state_path("risk_rejections", "app/state/risk_rejections.json")
+
+
+def open_exposure_path() -> Path:
+    return _state_path("open_exposure", "app/state/open_exposure.json")
 
 
 def is_blocked() -> dict:
@@ -289,8 +316,14 @@ def validate_registry(r: dict) -> list[str]:
     return problems
 
 
-def validate_config(cfg: dict) -> list[str]:
-    """Cross-check the live execution config against the policy + registry."""
+def validate_config(cfg: dict, require_full_coverage: bool = True) -> list[str]:
+    """Cross-check ONE execution config against the policy + registry.
+
+    ``require_full_coverage=True`` (legacy single-executor) asserts the whitelist holds
+    every tradeable pair. With two disjoint executors each config covers only part of
+    the tradeable set, so callers pass ``False`` per config and then run
+    ``validate_executors`` for the global (union + disjoint + combined-exposure) gate.
+    """
     problems: list[str] = []
     reg = registry()
     pol = policy()
@@ -301,17 +334,65 @@ def validate_config(cfg: dict) -> list[str]:
             problems.append(f"whitelist {pair} not in registry")
         elif not is_tradeable(pair):
             problems.append(f"whitelist {pair} is not tradeable (status-only)")
-    for pair in tradeable:
-        if pair not in wl:
-            problems.append(f"tradeable {pair} missing from whitelist")
+    if require_full_coverage:
+        for pair in tradeable:
+            if pair not in wl:
+                problems.append(f"tradeable {pair} missing from whitelist")
     mot = cfg.get("max_open_trades")
-    if mot != pol.get("portfolio", {}).get("max_concurrent_positions"):
-        problems.append(f"max_open_trades={mot} != policy.max_concurrent_positions")
+    max_pos = pol.get("portfolio", {}).get("max_concurrent_positions")
+    if not isinstance(mot, int) or mot < 1:
+        problems.append(f"max_open_trades={mot!r} must be a positive bound")
+    elif max_pos is not None and mot > int(max_pos):
+        problems.append(f"max_open_trades={mot} exceeds policy.max_concurrent_positions {max_pos}")
     if cfg.get("stake_amount") == "unlimited":
         problems.append("stake_amount must be bounded (not 'unlimited')")
-    # worst-case exposure from per-pair stakes must fit under the fixed cap
+    # worst-case exposure from this config's per-pair stakes must fit under the fixed cap
     worst = sum(max_stake_usd(p) or 0 for p in wl)
     cap = pol.get("portfolio", {}).get("max_total_open_exposure_usd")
     if cap is not None and worst > float(cap):
         problems.append(f"sum of per-pair max stakes {worst} > exposure cap {cap}")
+    return problems
+
+
+def validate_executors(configs: dict[str, dict]) -> list[str]:
+    """Global multi-executor invariants. `configs` maps an executor name -> its parsed
+    config. Safety by construction across independent order processes (each bot only
+    sees its own trade DB):
+
+      * pair sets are pairwise DISJOINT  -> no two executors can trade the same pair
+        (no duplicate orders, and each executor's per-pair exposure is unambiguous);
+      * the union covers exactly the tradeable set;
+      * summed max_open_trades <= max_concurrent_positions;
+      * summed worst-case per-pair stakes <= the fixed exposure cap.
+    """
+    problems: list[str] = []
+    pol = policy()
+    tradeable = set(tradeable_pairs())
+    seen: dict[str, str] = {}
+    total_mot = 0
+    total_worst = 0.0
+    cap = pol.get("portfolio", {}).get("max_total_open_exposure_usd")
+    max_pos = pol.get("portfolio", {}).get("max_concurrent_positions")
+    for name, cfg in configs.items():
+        wl = cfg.get("exchange", {}).get("pair_whitelist", [])
+        for pair in wl:
+            if pair in seen:
+                problems.append(f"{pair} traded by two executors ({seen[pair]} and {name}) — must be disjoint")
+            else:
+                seen[pair] = name
+            if pair not in tradeable:
+                problems.append(f"executor {name}: whitelist {pair} is not in the tradeable set")
+        mot = cfg.get("max_open_trades")
+        if isinstance(mot, int):
+            total_mot += mot
+        total_worst += sum(max_stake_usd(p) or 0 for p in wl)
+        for p in validate_config(cfg, require_full_coverage=False):
+            problems.append(f"executor {name}: {p}")
+    for pair in tradeable:
+        if pair not in seen:
+            problems.append(f"tradeable {pair} is not assigned to any executor")
+    if max_pos is not None and total_mot > int(max_pos):
+        problems.append(f"summed max_open_trades {total_mot} > max_concurrent_positions {max_pos}")
+    if cap is not None and total_worst > float(cap) + 1e-9:
+        problems.append(f"combined worst-case exposure {total_worst} > exposure cap {cap}")
     return problems

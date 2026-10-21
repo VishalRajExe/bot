@@ -24,6 +24,9 @@ def test_sweep_alerts_once_then_dedupes(tmp_path, monkeypatch):
     state_file = tmp_path / "crypto_status.json"
     monkeypatch.setattr(M, "STATE_PATH", state_file)
     monkeypatch.setattr(M, "open_positions", lambda *_a: {})
+    monkeypatch.setattr(M, "ft_db_paths", lambda: {})
+    monkeypatch.setattr(M, "write_exposure_ledger", lambda *_a: {})
+    monkeypatch.setattr(M, "notify_trade_events", lambda *_a: 0)
     monkeypatch.setattr(M, "update_equity_and_breaker",
                         lambda *_a: {"blocked": False, "equity": 100000.0})
     sent: list[str] = []
@@ -44,6 +47,9 @@ def test_position_appearance_is_a_change(tmp_path, monkeypatch):
     state_file = tmp_path / "crypto_status.json"
     monkeypatch.setattr(M, "STATE_PATH", state_file)
     monkeypatch.setattr(M, "open_positions", lambda *_a: {})
+    monkeypatch.setattr(M, "ft_db_paths", lambda: {})
+    monkeypatch.setattr(M, "write_exposure_ledger", lambda *_a: {})
+    monkeypatch.setattr(M, "notify_trade_events", lambda *_a: 0)
     monkeypatch.setattr(M, "update_equity_and_breaker",
                         lambda *_a: {"blocked": False, "equity": 100000.0})
     monkeypatch.setattr(M, "send", lambda _e, text: True)

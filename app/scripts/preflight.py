@@ -23,6 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PAPER_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
+FAST_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.fast.json"
 RISK_APPROVAL = ROOT / "app" / "configs" / "risk_approval.json"
 sys.path.insert(0, str(ROOT / "app"))
 from risk import policy as rp  # noqa: E402  independent paper-risk layer
@@ -101,10 +102,16 @@ def audit_config(cfg: dict, strategy_meta: dict) -> tuple[bool, list[dict]]:
     if sl is None or float(sl) >= 0:
         add("BLOCK", "NO_STOPLOSS", f"stoploss={sl!r} missing or non-negative.")
 
-    # 7. Thresholds documented (candidate values must be explicit, not None).
-    for k in ("bull_threshold", "exit_threshold"):
-        if strategy_meta.get(k) is None:
-            add("BLOCK", "THRESHOLD_UNSET", f"{k} unset — entries must fail closed.")
+    # 7. Thresholds documented (candidate values must be explicit, not None) — but only
+    # for the daily Z-score family. The intraday momentum strategy uses EMA windows +
+    # stop instead, so it must NOT be blocked for lacking bull/exit thresholds.
+    if strategy_meta.get("uses_z_thresholds", True):
+        for k in ("bull_threshold", "exit_threshold"):
+            if strategy_meta.get(k) is None:
+                add("BLOCK", "THRESHOLD_UNSET", f"{k} unset — entries must fail closed.")
+    else:
+        if not strategy_meta.get("momentum_windows"):
+            add("BLOCK", "MOMENTUM_UNSET", "momentum strategy has no EMA/volume windows — entries would fail closed.")
 
     ready = (not any(x["level"] == "BLOCK" for x in f)) and approval_exists()
     if not approval_exists():
@@ -118,21 +125,32 @@ def approval_exists() -> bool:
     return RISK_APPROVAL.exists()
 
 
-def load_strategy_meta() -> dict:
-    """Import the authoritative strategy and read its safety-relevant attributes."""
+def load_strategy_meta(strategy: str = "PaperAutonomous") -> dict:
+    """Import an authoritative strategy and read its safety-relevant attributes."""
     sys.path.insert(0, str(ROOT / "app" / "user_data" / "strategies"))
-    meta = {"can_short": None, "leverage": 1.0, "stoploss": None,
-            "bull_threshold": None, "exit_threshold": None,
-            "protections_count": 0, "timeframe": None, "startup_candle_count": None}
+    meta = {"strategy": strategy, "can_short": None, "leverage": 1.0, "stoploss": None,
+            "bull_threshold": None, "exit_threshold": None, "momentum_windows": None,
+            "uses_z_thresholds": True, "protections_count": 0, "timeframe": None,
+            "startup_candle_count": None}
     try:
-        from PaperAutonomous import PaperAutonomous as S  # noqa: E402  (subclasses BtcZScore)
+        import importlib
+        S = getattr(importlib.import_module(strategy), strategy)
         meta["can_short"] = bool(getattr(S, "can_short", False))
         meta["stoploss"] = getattr(S, "stoploss", None)
         meta["bull_threshold"] = getattr(S, "bull_threshold", None)
         meta["exit_threshold"] = getattr(S, "exit_threshold", None)
         meta["timeframe"] = getattr(S, "timeframe", None)
         meta["startup_candle_count"] = getattr(S, "startup_candle_count", None)
-        prot = S.protections  # @property on class? access via fget if needed
+        meta["risk_executor"] = getattr(S, "RISK_EXECUTOR", None)
+        # Momentum family: no daily Z thresholds; validate EMA/volume windows instead.
+        if getattr(S, "timeframe", None) == "5m" and hasattr(S, "_momentum_params"):
+            meta["uses_z_thresholds"] = False
+            meta["momentum_windows"] = {
+                "ema_fast": getattr(S, "_EMA_FAST_DEFAULT", None),
+                "ema_slow": getattr(S, "_EMA_SLOW_DEFAULT", None),
+                "vol_window": getattr(S, "_VOL_WINDOW_DEFAULT", None),
+            }
+        prot = S.protections
         try:
             meta["protections_count"] = len(prot)
         except TypeError:
@@ -143,10 +161,11 @@ def load_strategy_meta() -> dict:
     return meta
 
 
-def audit_risk_layer(cfg: dict) -> list[dict]:
-    """Validate the paper-risk policy + pair->strategy registry + whitelist consistency.
-    Every problem here is a BLOCK: the executor must not start with an unbounded,
-    contradictory, or un-vetted risk configuration."""
+def audit_risk_layer(configs: dict[str, dict]) -> list[dict]:
+    """Validate the paper-risk policy + pair->strategy registry + the GLOBAL
+    multi-executor invariants (disjoint whitelists, full tradeable coverage, combined
+    position + exposure bounds). Every problem is a BLOCK: no executor may start with
+    an unbounded, contradictory, overlapping, or un-vetted risk configuration."""
     out: list[dict] = []
     try:
         pol_problems = rp.validate_policy(rp.policy())
@@ -163,18 +182,20 @@ def audit_risk_layer(cfg: dict) -> list[dict]:
         out.append({"level": "BLOCK", "code": "REGISTRY_INVALID", "message": p})
 
     try:
-        cfg_problems = rp.validate_config(cfg)
+        ex_problems = rp.validate_executors(configs)
     except Exception as e:  # noqa: BLE001
-        cfg_problems = [f"config cross-check failed: {type(e).__name__}: {e}"]
-    for p in cfg_problems:
-        out.append({"level": "BLOCK", "code": "CONFIG_RISK_MISMATCH", "message": p})
+        ex_problems = [f"multi-executor cross-check failed: {type(e).__name__}: {e}"]
+    for p in ex_problems:
+        out.append({"level": "BLOCK", "code": "EXECUTOR_CONFIG_MISMATCH", "message": p})
 
     if not out:
         cap = rp.policy().get("portfolio", {}).get("max_total_open_exposure_usd")
         mot = rp.policy().get("portfolio", {}).get("max_concurrent_positions")
+        layout = "; ".join(f"{name}={cfg.get('exchange', {}).get('pair_whitelist', [])}"
+                           for name, cfg in configs.items())
         out.append({"level": "OK", "code": "AUTONOMOUS_PAPER_POLICY",
-                    "message": f"bounded policy active: exposure<={cap} USD, <={mot} positions, "
-                               f"per-pair stakes from registry; no per-trade approval required"})
+                    "message": f"bounded policy active across BOTH executors: GLOBAL exposure<={cap} USD, "
+                               f"<={mot} positions total, disjoint pairs [{layout}]"})
         out.append({"level": "OK", "code": "TRADEABLE_SET",
                     "message": "tradeable: " + ", ".join(rp.tradeable_pairs()) +
                                " | status-only: " + ", ".join(rp.status_only_pairs())})
@@ -187,16 +208,29 @@ def main() -> int:
             _s.reconfigure(encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
-    cfg = json.loads(PAPER_CFG.read_text(encoding="utf-8"))
-    meta = load_strategy_meta()
-    ready, findings = audit_config(cfg, meta)
-    risk_findings = audit_risk_layer(cfg)
+    configs = {
+        "daily": json.loads(PAPER_CFG.read_text(encoding="utf-8")),
+        "fast": json.loads(FAST_CFG.read_text(encoding="utf-8")),
+    }
+    strategies = {"daily": "PaperAutonomous", "fast": "MomentumAlt"}
+    findings: list[dict] = []
+    ready = True
+    metas: dict[str, dict] = {}
+    for name, cfg in configs.items():
+        meta = load_strategy_meta(strategies[name])
+        metas[name] = meta
+        r, f = audit_config(cfg, meta)
+        findings += f
+        ready = ready and r
+    risk_findings = audit_risk_layer(configs)
     findings = findings + risk_findings
     if any(x["level"] == "BLOCK" for x in risk_findings):
         ready = False
 
-    print(f"Preflight (config={PAPER_CFG.name})")
-    print(f"strategy_meta={meta}")
+    print(f"Preflight — {len(configs)} executors "
+          f"(daily={PAPER_CFG.name}, fast={FAST_CFG.name})")
+    for name, meta in metas.items():
+        print(f"  {name} strategy_meta={meta}")
     for x in findings:
         print(f"  [{x['level']:5}] {x['code']}: {x['message']}")
     print(f"\nTRADING READY: {ready}")

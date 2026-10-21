@@ -1,10 +1,10 @@
 {
   "_comment": "UnboundBot \u2014 Alpaca PAPER execution config (Phase 6). dry_run=false means Freqtrade sends REAL orders to the endpoint below; the trader URL is overridden to paper-api.alpaca.markets so orders go to Alpaca PAPER (no real money). Keys authenticate OK (check_alpaca.py). Do NOT run until the owner approves paper order flow.",
   "_warning": "If the ccxt url override ever fails, orders could target live. Verify the resolved endpoint with check_alpaca.py before trading. Rotate the exposed keys.",
-  "_sizing_note": "BOUNDED PAPER_AUTONOMOUS sizing (owner directive 2026-10-21). stake_amount=5000 is the per-trade base proposal; the executor's custom_stake_amount + confirm_trade_entry enforce the app/configs/paper_risk_policy.json caps: BTC stays 5000 (baseline, never raised), alts 1000 with 500 max planned loss, total open exposure <= min(10000, 10% equity), max 5 positions, one per pair. Entries are automatic (no per-trade approval) but every order is auto-validated and unsafe ones are rejected + explained. PAPER ONLY.",
+  "_sizing_note": "BOUNDED PAPER_AUTONOMOUS sizing (owner directive 2026-10-21). This is the DAILY executor and trades ONLY the BTC baseline (stake 5000, never raised). The experimental alts moved to the separate 5m momentum executor (config.alpaca.paper.fast.json) so intraday trading cannot touch BTC's daily model. The two whitelists are DISJOINT; app/risk/policy.validate_executors enforces the GLOBAL bounds: exposure <= min(10000, 10% equity) across BOTH executors via the cross-executor open_exposure ledger, max 5 positions total, one per pair. Entries are automatic (no per-trade approval) but every order is auto-validated and unsafe ones are rejected + explained. PAPER ONLY.",
   "trading_mode": "spot",
   "margin_mode": "",
-  "max_open_trades": 5,
+  "max_open_trades": 1,
   "stake_currency": "USD",
   "stake_amount": 5000,
   "available_capital": 100000,
@@ -34,11 +34,7 @@
     },
     "ccxt_async_config": {},
     "pair_whitelist": [
-      "BTC/USD",
-      "ETH/USD",
-      "XRP/USD",
-      "DOT/USD",
-      "LINK/USD"
+      "BTC/USD"
     ],
     "pair_blacklist": [
       "USDT/USD"

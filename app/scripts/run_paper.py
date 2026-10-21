@@ -6,7 +6,8 @@ starts `freqtrade trade` against the paper endpoint. Freqtrade does NOT support
 %ENV% substitution in config, so keys must come from these env vars.
 
 Usage:
-  python app/scripts/run_paper.py            # start (respects config initial_state)
+  python app/scripts/run_paper.py            # DAILY executor: BTC baseline only (1d)
+  python app/scripts/run_paper.py --fast     # FAST executor: experimental alts (5m momentum)
   python app/scripts/run_paper.py --check    # connect + load markets only, then exit
 """
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FT = ROOT / ".venv" / "Scripts" / "freqtrade.exe"
 CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
+FAST_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.fast.json"
 USERDIR = ROOT / "app" / "user_data"
 STATE_FILE = ROOT / "app" / "state" / "paper_bot.json"
 HEARTBEAT_SECS = 20
@@ -57,6 +59,16 @@ def _heartbeat_loop(proc: subprocess.Popen, base: dict) -> None:
 
 
 def main() -> int:
+    global CFG, STATE_FILE
+    fast = "--fast" in sys.argv
+    if fast:
+        CFG = FAST_CFG
+        STATE_FILE = ROOT / "app" / "state" / "paper_bot_fast.json"
+        strategy, bot_name = "MomentumAlt", "unboundbot-alpaca-paper-fast"
+    else:
+        strategy, bot_name = "PaperAutonomous", "unboundbot-alpaca-paper"
+    print(f"profile={'FAST (5m alts)' if fast else 'DAILY (BTC baseline)'}  strategy={strategy}")
+
     load_env()
     key = os.environ.get("ALPACA_PAPER_API_KEY", "")
     secret = os.environ.get("ALPACA_PAPER_API_SECRET", "")
@@ -79,6 +91,7 @@ def main() -> int:
         env["FREQTRADE__TELEGRAM__CHAT_ID"] = tg_chat
         print("telegram chat_id loaded from .env")
 
+    logfile = ROOT / (".ft_alpaca_fast.log" if fast else ".ft_alpaca.log")
     if "--check" in sys.argv:
         # Validate markets/data without trading: use show-trades? simplest: list-markets.
         args = [str(FT), "list-markets", "-c", str(CFG), "--userdir", str(USERDIR)]
@@ -87,11 +100,11 @@ def main() -> int:
 
     args = [
         str(FT), "trade", "-c", str(CFG), "--userdir", str(USERDIR),
-        "--strategy", "PaperAutonomous", "--logfile", str(ROOT / ".ft_alpaca.log"),
+        "--strategy", strategy, "--logfile", str(logfile),
     ]
     print("launching Alpaca PAPER bot ...")
     proc = subprocess.Popen(args, env=env)
-    base = {"bot_name": "unboundbot-alpaca-paper", "started": datetime.now(timezone.utc).isoformat()}
+    base = {"bot_name": bot_name, "started": datetime.now(timezone.utc).isoformat()}
     t = threading.Thread(target=_heartbeat_loop, args=(proc, base), daemon=True)
     t.start()
     try:

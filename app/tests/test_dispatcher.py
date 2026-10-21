@@ -82,6 +82,10 @@ def veto(monkeypatch):
     """Neutral side effects so confirm_trade_entry is hermetic."""
     monkeypatch.setattr(policy, "log_rejection", lambda *a, **k: None)
     monkeypatch.setattr(policy, "is_blocked", lambda: {"blocked": False, "reason": ""})
+    # Default: a FRESH cross-executor ledger reporting the other bot holds nothing, so
+    # the exposure gate is exercised against a known state (individual tests override).
+    monkeypatch.setattr(policy, "external_exposure",
+                        lambda *a, **k: {"external": 0.0, "known": True})
     return monkeypatch
 
 
@@ -141,6 +145,30 @@ def test_rejects_when_pair_already_open(veto):
 def test_rejects_when_exposure_cap_would_breach(veto):
     veto.setattr(policy, "get_equity", lambda *a, **k: {"equity": 100000.0})
     _trades(veto, [("ETH/USD", 9000.0)])   # 9000 open + new BTC 4800 > 10000 cap
+    obj = _new()
+    assert obj.confirm_trade_entry("BTC/USD", "market", 0.06, 80000.0, "GTC",
+                                   datetime.now(timezone.utc), "t", "long") is False
+
+
+def test_rejects_when_exposure_ledger_unavailable(veto):
+    # Fail-closed: a missing/stale cross-executor ledger means the GLOBAL exposure
+    # cannot be verified, so the entry is vetoed even with fresh equity.
+    veto.setattr(policy, "get_equity", lambda *a, **k: {"equity": 100000.0})
+    veto.setattr(policy, "external_exposure",
+                 lambda *a, **k: {"external": 0.0, "known": False, "reason": "stale"})
+    _trades(veto, [])
+    obj = _new()
+    assert obj.confirm_trade_entry("BTC/USD", "market", 0.06, 80000.0, "GTC",
+                                   datetime.now(timezone.utc), "t", "long") is False
+
+
+def test_other_executor_exposure_counts_toward_global_cap(veto):
+    # BTC's own DB is empty, but the FAST executor already holds 9000; adding BTC 4800
+    # would breach the 10000 GLOBAL cap — the only way to see this is via the ledger.
+    veto.setattr(policy, "get_equity", lambda *a, **k: {"equity": 100000.0})
+    veto.setattr(policy, "external_exposure",
+                 lambda *a, **k: {"external": 9000.0, "known": True})
+    _trades(veto, [])
     obj = _new()
     assert obj.confirm_trade_entry("BTC/USD", "market", 0.06, 80000.0, "GTC",
                                    datetime.now(timezone.utc), "t", "long") is False

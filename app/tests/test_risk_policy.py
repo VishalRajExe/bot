@@ -71,8 +71,32 @@ def test_rejection_log_roundtrip(tmp_path, monkeypatch):
 def test_real_config_validates_clean():
     import json
     from pathlib import Path
-    cfg = json.loads((Path(__file__).resolve().parents[1] / "configs" /
-                      "config.alpaca.paper.json").read_text(encoding="utf-8"))
+    cfgs = Path(__file__).resolve().parents[1] / "configs"
+    daily = json.loads((cfgs / "config.alpaca.paper.json").read_text(encoding="utf-8"))
+    fast = json.loads((cfgs / "config.alpaca.paper.fast.json").read_text(encoding="utf-8"))
     assert policy.validate_policy(policy.policy()) == []
     assert policy.validate_registry(policy.registry()) == []
-    assert policy.validate_config(cfg) == []
+    # Each executor covers only PART of the tradeable set, so require_full_coverage=False.
+    assert policy.validate_config(daily, require_full_coverage=False) == []
+    assert policy.validate_config(fast, require_full_coverage=False) == []
+    # The GLOBAL invariants (disjoint, full coverage, combined exposure/positions) hold.
+    assert policy.validate_executors({"daily": daily, "fast": fast}) == []
+
+
+def test_executors_must_be_disjoint_and_cover_all():
+    daily = {"exchange": {"pair_whitelist": ["BTC/USD", "ETH/USD"]}, "max_open_trades": 1,
+             "stake_amount": 5000}
+    fast = {"exchange": {"pair_whitelist": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD"]},
+            "max_open_trades": 4, "stake_amount": 1000}
+    problems = policy.validate_executors({"daily": daily, "fast": fast})
+    assert any("disjoint" in p for p in problems)          # ETH in both executors
+
+
+def test_combined_worst_case_exposure_is_bounded():
+    # Two executors each individually fine but whose summed stakes exceed the cap.
+    a = {"exchange": {"pair_whitelist": ["BTC/USD"]}, "max_open_trades": 1, "stake_amount": 5000}
+    b = {"exchange": {"pair_whitelist": ["ETH/USD"]}, "max_open_trades": 4, "stake_amount": 1000}
+    # only 2 pairs assigned -> union does NOT cover the tradeable set -> problem listed,
+    # but it must never report clean while a global bound is violated.
+    problems = policy.validate_executors({"daily": a, "fast": b})
+    assert problems  # coverage gap (missing XRP/DOT/LINK) is caught

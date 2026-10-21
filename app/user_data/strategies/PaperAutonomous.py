@@ -42,6 +42,11 @@ class PaperAutonomous(BtcZScore):
     timeframe = "1d"          # inherited from baseline; explicit for clarity
     can_short = False         # spot, long-only
 
+    # Identifies THIS order process in the cross-executor open_exposure ledger so the
+    # global portfolio cap can account for the OTHER executor's open stake (each
+    # Freqtrade bot only sees its own trade DB). MomentumAlt overrides this to "fast".
+    RISK_EXECUTOR = "daily"
+
     # Alt experimental threshold fallback if the registry omits a value (still separate
     # from the BTC baseline constants so the two are never silently coupled).
     _ALT_BULL_DEFAULT = 0.5
@@ -145,15 +150,24 @@ class PaperAutonomous(BtcZScore):
         equity = eq.get("equity")
         if not eq or eq.get("_stale") or equity is None:
             return self._reject(pair, "STALE_OR_UNKNOWN_EQUITY", "cannot size portfolio exposure without a fresh equity snapshot", ctx)
-        # 7. one position per pair + no unresolved open trade for the pair.
+        # 7. one position per pair + no unresolved open trade for this pair.
         from freqtrade.persistence import Trade
         opens = Trade.get_trades_proxy(is_open=True)
         if any(t.pair == pair for t in opens):
             return self._reject(pair, "DUPLICATE_OR_UNRESOLVED", "an open position/order already exists for this pair", ctx)
-        open_stake = sum(float(t.stake_amount or 0) for t in opens)
-        # 8. portfolio exposure cap.
+        own_stake = sum(float(t.stake_amount or 0) for t in opens)
+        # 8. GLOBAL portfolio exposure cap. This bot only sees its OWN trade DB, so we
+        # add the other executor's open stake from the cross-executor ledger (written by
+        # the read-only monitor, the same source that produced the fresh equity above).
+        # Fail-closed when the ledger is unavailable/stale — never size against a guess.
+        ext = policy.external_exposure(self.RISK_EXECUTOR)
+        if not ext["known"]:
+            ctx["ledger"] = ext["reason"]
+            return self._reject(pair, "EXPOSURE_LEDGER_UNAVAILABLE", f"cannot verify cross-executor exposure: {ext['reason']}", ctx)
+        open_stake = own_stake + ext["external"]
         if policy.would_breach_exposure(open_stake, notional, equity):
-            ctx.update({"open_stake": open_stake, "exposure_cap": policy.exposure_cap_usd(equity)})
+            ctx.update({"own_stake": own_stake, "external_stake": ext["external"],
+                        "open_stake": open_stake, "exposure_cap": policy.exposure_cap_usd(equity)})
             return self._reject(pair, "EXPOSURE_CAP", "adding this position would exceed the portfolio exposure cap", ctx)
         # all automated checks pass -> submit the paper order without manual approval
         return True
