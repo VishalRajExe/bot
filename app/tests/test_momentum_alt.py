@@ -131,9 +131,9 @@ def test_external_exposure_fail_closed_on_missing_and_stale(tmp_path, monkeypatc
 # ---- global multi-executor invariant ----------------------------------------
 
 def test_validate_executors_catches_overlap_and_gaps():
-    daily = {"exchange": {"pair_whitelist": ["BTC/USD"]}, "max_open_trades": 1, "stake_amount": 5000}
+    daily = {"exchange": {"pair_whitelist": ["BTC/USD"]}, "max_open_trades": 1, "stake_amount": 15}
     fast = {"exchange": {"pair_whitelist": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD"]},
-            "max_open_trades": 4, "stake_amount": 1000}
+            "max_open_trades": 3, "stake_amount": 10}
     assert policy.validate_executors({"daily": daily, "fast": fast}) == []
     overlap = dict(daily)
     overlap["exchange"] = {"pair_whitelist": ["BTC/USD", "ETH/USD"]}

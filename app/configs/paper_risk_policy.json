@@ -1,6 +1,6 @@
 {
   "_purpose": "Predefined, bounded PAPER_AUTONOMOUS risk policy. The bot executes eligible strategies WITHOUT per-trade or per-coin manual approval, but every entry/exit is validated against these hard limits by the independent risk layer (app/risk/policy.py + PaperAutonomous.confirm_trade_entry). This is autonomous execution inside a policy, not unrestricted trading. PAPER ONLY.",
-  "revised": "2026-10-21 rev2 (CONSERVATIVE $100 PAPER preset, owner directive 2026-10-21: repoint to a $100 paper account, Daily BTC first)",
+  "revised": "2026-10-21 rev3 (CONSERVATIVE $100 PAPER preset; BTC stake raised 10->15 after discovering Alpaca's ~$15 minimum order notional for BTC/USD made a $10 stake non-tradeable; owner approved the broker floor 2026-10-21)",
   "authorization": {
     "paper_autonomous": "APPROVED_BY_OWNER (directive 2026-10-21, CONSERVATIVE $100 preset): automatic BUY/SELL/HOLD/EXIT for eligible crypto in Alpaca PAPER without per-trade approval, sized for a $100 balance. Only the DAILY BTC executor is started first; the fast 5m alt executor stays configured but is not run until the $100 path is verified.",
     "live_trading": "NOT APPROVED under any circumstance.",
@@ -17,14 +17,14 @@
     "averaging_down_martingale": true
   },
   "per_position": {
-    "BTC/USD": { "max_stake_usd": 10 },
+    "BTC/USD": { "max_stake_usd": 15 },
     "_default": { "max_stake_usd": 10, "max_planned_loss_usd": 2 },
     "sizing": "Quantity derived from the actual stop distance where applicable; stake is reduced further if the stop distance would breach max_planned_loss_usd."
   },
   "portfolio": {
-    "max_total_open_exposure_usd": 50,
+    "max_total_open_exposure_usd": 55,
     "max_total_exposure_pct_equity": 0.40,
-    "exposure_rule": "effective cap = min(max_total_open_exposure_usd, max_total_exposure_pct_equity * current_paper_equity). On a $100 account this is min(50, 40) = $40 total open exposure; the 50 structural ceiling only lets validate_executors pass the worst-case whitelist sum (BTC + 4 alts x $10).",
+    "exposure_rule": "effective cap = min(max_total_open_exposure_usd, max_total_exposure_pct_equity * current_paper_equity). On a $100 account this is min(55, 40) = $40 total open exposure; the $55 structural ceiling only lets validate_executors pass the worst-case whitelist sum (BTC $15 + 4 alts x $10 = $55).",
     "max_concurrent_positions": 4,
     "max_one_position_per_pair": true,
     "capital_basis": "cash_and_equity",
@@ -54,8 +54,8 @@
     "trade_review": "app/state/trade_review.json"
   },
   "executors": {
-    "note": "Two DISJOINT PAPER order executors are CONFIGURED (CONSERVATIVE $100 preset, owner directive 2026-10-21). 'daily' = BTC baseline only (1d Z-score, stake $10) and is the only executor STARTED first. 'fast' = ETH/XRP/DOT/LINK (5m momentum, $10 each, max 3) stays configured but running=false until the $100 path is verified. Each Freqtrade process only sees its own trade DB, so the read-only monitor writes app/state/open_exposure.json and every confirm_trade_entry adds the OTHER executor's open stake before the exposure-cap check (fail-closed if the ledger is stale) — the $40 (min of $50 / 40%-equity) cap stays global, not per-process. Pair sets are disjoint. Structural worst case = BTC 10 + 4 alts x 10 = 50 <= fixed cap 50; positions 1 + 3 = 4 <= max_concurrent 4; runtime open exposure additionally bounded to ~$40 by the 40%-equity rule.",
-    "daily": { "config": "config.alpaca.paper.json", "strategy": "PaperAutonomous", "timeframe": "1d", "pairs": ["BTC/USD"], "stake_usd": 10, "max_open_trades": 1 },
+    "note": "Two DISJOINT PAPER order executors are CONFIGURED (CONSERVATIVE $100 preset, owner directive 2026-10-21). 'daily' = BTC baseline only (1d Z-score, stake $10) and is the only executor STARTED first. 'fast' = ETH/XRP/DOT/LINK (5m momentum, $10 each, max 3) stays configured but running=false until the $100 path is verified. Each Freqtrade process only sees its own trade DB, so the read-only monitor writes app/state/open_exposure.json and every confirm_trade_entry adds the OTHER executor's open stake before the exposure-cap check (fail-closed if the ledger is stale) — the $40 (min of $50 / 40%-equity) cap stays global, not per-process. Pair sets are disjoint. Structural worst case = BTC 15 + 4 alts x 10 = 55 <= fixed cap 55; positions 1 + 3 = 4 <= max_concurrent 4; runtime open exposure additionally bounded to ~$40 by the 40%-equity rule. NOTE: BTC stake is 15 (not 10) because Alpaca enforces a ~$15 minimum order notional on BTC/USD, so a $10 stake is silently un-fillable; alt stakes stay at 10 and will be re-based to each venue's true minimum before the fast executor is started.",
+    "daily": { "config": "config.alpaca.paper.json", "strategy": "PaperAutonomous", "timeframe": "1d", "pairs": ["BTC/USD"], "stake_usd": 15, "max_open_trades": 1 },
     "fast": { "config": "config.alpaca.paper.fast.json", "strategy": "MomentumAlt", "timeframe": "5m", "pairs": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD"], "stake_usd": 10, "max_open_trades": 3, "running": false }
   },
   "fail_closed": [

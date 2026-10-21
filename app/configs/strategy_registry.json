@@ -1,6 +1,6 @@
 {
   "_purpose": "Pair-to-strategy registry for the PAPER executors. Maps every monitored pair to its assigned strategy, executor, timeframe, version, tradeable state, and bounded risk profile. Consumed by app/user_data/strategies/PaperAutonomous.py (daily), app/user_data/strategies/MomentumAlt.py (fast), app/scripts/preflight.py, and app/scripts/crypto_status_monitor.py. BTC's baseline math is NOT defined here — it lives in BtcZScore and is preserved by subclassing.",
-  "revised": "2026-10-21 rev2 (CONSERVATIVE $100 paper preset; stakes re-based to $10/position)",
+  "revised": "2026-10-21 rev3 (CONSERVATIVE $100 paper preset; BTC stake raised to $15 = Alpaca minimum order notional; alts stay $10 pending venue-minimum check)",
   "executor_strategy": "PaperAutonomous",
   "executor_timeframe": "1d",
   "fast_executor_strategy": "MomentumAlt",
@@ -18,11 +18,11 @@
       "version": "btc-1d-z65-b0.5-e0.0",
       "eligible": true,
       "risk": {
-        "max_stake_usd": 10,
+        "max_stake_usd": 15,
         "stoploss": -0.35,
         "bull_threshold": 0.5,
         "exit_threshold": 0.0,
-        "note": "Baseline preserved exactly (EMA65/STD65/Z/transitions/daily TF/version). Do not increase BTC stake."
+        "note": "Baseline preserved exactly (EMA65/STD65/Z/transitions/daily TF/version). Stake 15 = Alpaca's ~$15 BTC/USD minimum order notional (a $10 stake is silently un-fillable); do not set BTC stake below that floor."
       }
     },
     "ETH/USD": {

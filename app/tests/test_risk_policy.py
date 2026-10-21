@@ -9,11 +9,11 @@ def setup_function(_):
 
 
 def test_btc_stake_preserved_and_alt_bounded():
-    assert policy.max_stake_usd("BTC/USD") == 5000.0
+    assert policy.max_stake_usd("BTC/USD") == 15.0
     assert policy.max_planned_loss_usd("BTC/USD") is None          # baseline never loss-capped down
-    assert policy.stake_for_pair("BTC/USD", 5000) == 5000.0
-    assert policy.stake_for_pair("BTC/USD", 99999) == 5000.0        # capped at 5000
-    assert policy.stake_for_pair("ETH/USD", 5000) == 1000.0         # alt stake cap
+    assert policy.stake_for_pair("BTC/USD", 5000) == 15.0
+    assert policy.stake_for_pair("BTC/USD", 99999) == 15.0         # capped at the 15 broker-floor stake
+    assert policy.stake_for_pair("ETH/USD", 5000) == 10.0          # alt stake cap
 
 
 def test_tradeable_vs_status_only_sets():
@@ -24,9 +24,9 @@ def test_tradeable_vs_status_only_sets():
 
 
 def test_exposure_cap_is_lower_of_fixed_and_pct_equity():
-    assert policy.exposure_cap_usd(100000) == 10000.0              # fixed cap binds
-    assert policy.exposure_cap_usd(50000) == 5000.0                # 10% binds
-    assert policy.exposure_cap_usd(30000) == 3000.0
+    assert policy.exposure_cap_usd(100000) == 55.0                # fixed 55 binds (40% of 100k = 40k)
+    assert policy.exposure_cap_usd(200) == 55.0                   # fixed 55 binds (40% of 200 = 80)
+    assert policy.exposure_cap_usd(100) == 40.0                   # 40%-equity binds on a $100 account
 
 
 def test_exposure_cap_fail_closed_when_equity_unknown():
@@ -35,19 +35,19 @@ def test_exposure_cap_fail_closed_when_equity_unknown():
 
 
 def test_would_breach_exposure_math():
-    assert policy.would_breach_exposure(9000, 1500, 100000) is True   # 10500 > 10000
-    assert policy.would_breach_exposure(9000, 500, 100000) is False
+    assert policy.would_breach_exposure(50, 10, 100000) is True       # 60 > cap 55
+    assert policy.would_breach_exposure(40, 10, 100000) is False      # 50 <= cap 55
 
 
 def test_breaker_daily_loss_and_drawdown():
-    br = policy.breaker_status(equity=98000, sod_equity=100000, peak_equity=100000)
-    assert br["triggered"] is True
+    br = policy.breaker_status(equity=96000, sod_equity=100000, peak_equity=100000)
+    assert br["triggered"] is True                                     # 4% daily loss >= 3%
     assert any("daily_equity_loss" in r for r in br["reasons"])
-    br2 = policy.breaker_status(equity=94000, sod_equity=98000, peak_equity=100000)
-    assert br2["triggered"] is True
+    br2 = policy.breaker_status(equity=93000, sod_equity=95000, peak_equity=100000)
+    assert br2["triggered"] is True                                    # 7% peak-to-trough >= 6%
     assert any("peak_to_trough_drawdown" in r for r in br2["reasons"])
     br3 = policy.breaker_status(equity=99500, sod_equity=100000, peak_equity=100000)
-    assert br3["triggered"] is False
+    assert br3["triggered"] is False                                   # 0.5% within both limits
 
 
 def test_kill_switch_roundtrip(tmp_path, monkeypatch):

@@ -98,9 +98,10 @@ def _trades(monkeypatch, items):
 
 def test_valid_entry_auto_approved_without_manual_step(veto):
     _trades(veto, [])
-    veto.setattr(policy, "get_equity", lambda *a, **k: {"equity": 100000.0})
+    veto.setattr(policy, "get_equity", lambda *a, **k: {"equity": 100.0})
     obj = _new()
-    ok = obj.confirm_trade_entry("BTC/USD", "market", 0.06, 80000.0, "GTC",
+    # BTC stake 0.0001 x 80000 = $8 <= the $15 per-position floor; global exposure 8 <= 40.
+    ok = obj.confirm_trade_entry("BTC/USD", "market", 0.0001, 80000.0, "GTC",
                                  datetime.now(timezone.utc), "tag", "long")
     assert ok is True
 
