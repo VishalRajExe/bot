@@ -35,6 +35,11 @@ import obs_lib as O  # noqa: E402
 
 # --- thresholds (candidate operational limits; NOT trading risk limits) ---
 QTY_TOL = 1e-6              # BTC quantity tolerance for portfolio match
+# Alpaca settles crypto fees NET OF POSITION (broker qty < filled qty), so a correctly
+# reconciled crypto trade drifts by up to the fee rate (observed 0.15% on a live paper
+# fill). 0.35% covers taker fees on both sides with margin; a real mismatch (missing/
+# duplicate/external position) is orders of magnitude larger and still CRITICALs.
+FEE_DRIFT_TOL = 0.0035
 HEARTBEAT_MAX_AGE_S = 600   # bot must beat within this or it is OFFLINE
 CANDLE_MAX_AGE_H = 30.0     # daily candle older than this => STALE feed
 
@@ -104,10 +109,14 @@ def classify_status(s: dict) -> tuple[str, str]:
     if s.get("live_endpoint_suspected"):
         return CRITICAL, "Resolved trader endpoint is NOT Alpaca paper — stop."
     drift = _f(s.get("qty_drift", 0.0))
-    if abs(drift) > QTY_TOL:
+    # Fee-net settlement makes broker_qty slightly < ft filled qty. Tolerance scales
+    # with the open amount; a genuine mismatch (missing/duplicate/external position)
+    # is far larger and still trips CRITICAL.
+    drift_tol = max(QTY_TOL, abs(_f(s.get("ft_open_amount", 0.0))) * FEE_DRIFT_TOL)
+    if abs(drift) > drift_tol:
         return CRITICAL, (f"portfolio mismatch: broker qty {s.get('broker_position_qty')} "
                           f"vs Freqtrade open amount {s.get('ft_open_amount')} "
-                          f"(drift {drift}).")
+                          f"(drift {drift}, tol {round(drift_tol, 8)}).")
 
     # --- OFFLINE: the executor is not provably running ---
     hb = s.get("heartbeat_age_s")

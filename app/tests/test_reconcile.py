@@ -74,6 +74,26 @@ def test_portfolio_drift_is_critical():
     assert status == R.CRITICAL
 
 
+def test_fee_net_drift_within_tolerance_is_healthy():
+    # Real paper fill (2026-10-21): Alpaca settles the crypto fee NET OF POSITION, so
+    # broker qty is ~0.15% below the Freqtrade filled amount. That is a CORRECT match,
+    # not a portfolio break — must not read CRITICAL.
+    ft_amt = 42.74856151
+    drift = round(42.641690106 - ft_amt, 8)     # -0.1069 (~0.25% of position)
+    status, _ = R.classify_status(_sig(qty_drift=drift, ft_open_amount=ft_amt,
+                                       broker_position_qty=42.641690106))
+    assert status == R.HEALTHY
+
+
+def test_fee_net_drift_beyond_tolerance_is_still_critical():
+    # A real missing/duplicate position is orders of magnitude larger than any fee and
+    # must STILL be CRITICAL even with a non-zero open amount.
+    ft_amt = 42.74856151
+    status, _ = R.classify_status(_sig(qty_drift=-5.0, ft_open_amount=ft_amt,
+                                       broker_position_qty=ft_amt - 5.0))
+    assert status == R.CRITICAL
+
+
 def test_corrupt_db_is_critical():
     status, _ = R.classify_status(_sig(ft_db_ok=False))
     assert status == R.CRITICAL

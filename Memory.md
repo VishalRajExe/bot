@@ -36,6 +36,10 @@ decisions/outcomes. Do not conflate the two.
 
 ## Blockers (open)
 - Second "dual signal" component of the source strategy is unavailable (protected).
+- **Alpaca fee-in-base crypto exit dust** (found 2026-10-21 via a controlled test trade): a full exit
+  leaves a sub-fee base-currency residual that Freqtrade cannot sell, so the trade never closes. Blocks
+  AUTONOMOUS crypto EXITS on BOTH executors (fast momentum bot is PAUSED for this reason; daily baseline
+  hasn't filled yet). Needs an approved fix before re-enabling exits — see Log 2026-10-21.
 
 ## Resolved blockers
 - **Alpaca paper keys now authenticate** (AUTH OK: cash 100k, crypto ACTIVE). Keys live
@@ -197,6 +201,29 @@ decisions/outcomes. Do not conflate the two.
   reconcile **HEALTHY** aggregated across both DBs (drift 0); monitor first sweep sent 6 per-asset alerts +
   wrote the ledger; live signal reads confirm correct states (alts HOLD/FLAT without a fresh cross, BTC
   unchanged +0.812). **No profitability claimed — 5m forward-test only, fees/slippage drag expected.**
+- 2026-10-21 **CONTROLLED TEST TRADE → DISCOVERED ALPACA FEE-IN-BASE EXIT DUST (fast bot paused).**
+  Owner asked "buy something for testing." Temporarily enabled a localhost `api_server` + `force_entry_enable`
+  on the FAST paper config (creds from .env, never committed; later reverted) and POSTed a $50 DOT/USD market
+  forceentry. **BUY path fully verified**: it ran the ENTIRE `confirm_trade_entry` veto (tradeable→cap→breaker→
+  fresh-equity→duplicate→global-exposure incl. cross-executor ledger), filled at the paper broker, wrote
+  `open_exposure.json`, fired monitor Telegram alerts, and reconcile mirrored it. **EXIT exposed a real bug**:
+  Alpaca settles crypto fees **net of position** (fee deducted from the BASE coins received: credited 42.64 DOT,
+  not the 42.75 Freqtrade recorded) but its ccxt order reports the fee in QUOTE. Freqtrade's `_safe_exit_amount`
+  falls back to the wallet amount, yet `recalc_trade_from_orders` recomputes balance from order fills
+  (buy 42.748 − sell 42.641 = 0.107), so a sub-fee **dust residual stays permanently open** — the bot thrashes
+  re-applying buy-fee and the trade never closes (would flip reconcile back to CRITICAL). No config knob fixes
+  it; the only true fixes (patch the vendored engine/exchange subclass, or mutate the live bot DB out-of-band)
+  both violate our thin-layer / read-only-observability rules, so NEITHER was done. DECISION (owner "pick best"):
+  keep the FAST executor **PAUSED** — entries/holding are fine but autonomous crypto EXITS must not run until
+  fee-in-base is solved; shipping it into a known exit-jam is not "carefully." The DAILY BTC baseline (approved,
+  holding no position) is left running but shares this latent exit issue. Reverted test affordances: fast config
+  `force_entry_enable=false`, api_server block removed, `run_paper.py` api injection removed. **Kept a genuine
+  fix**: `reconcile.py` now treats fee-net drift as expected (tolerance scales with open amount, not absolute
+  1e-6) so a correctly-held position doesn't false-CRITICAL; +2 regression tests (fee-net within tol → HEALTHY,
+  real mismatch → still CRITICAL) → **128 passed**. Cleaned the isolated fast test DB (broker 0 == DB 0 open);
+  baseline untouched; equity honestly 99,999.59 (−$0.41 test cost). **OPEN BLOCKER (both executors, crypto):
+  Alpaca fee-in-base exit dust — must design a proper handling (engine fee-currency override via an approved
+  Alpaca exchange subclass, or a safe documented operational close) before re-enabling autonomous exits.**
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`

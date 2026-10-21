@@ -98,6 +98,7 @@
   "bot_name": "unboundbot-alpaca-paper-fast",
   "initial_state": "running",
   "force_entry_enable": false,
+  "_force_entry_note": "Owner may enable force_entry + a localhost api_server to run a CONTROLLED test trade through the veto layer (used 2026-10-21 to verify the buy path). Left OFF by default: forced entries are a testing affordance, not part of autonomous operation. NOTE from that test: Alpaca settles crypto fees NET OF POSITION (fee taken in base), which leaves a sub-fee dust residual that Freqtrade cannot exit and that stalls the trade — autonomous crypto exits must not run until this is solved (see Memory.md).",
   "internals": {
     "process_throttle_secs": 20
   }
