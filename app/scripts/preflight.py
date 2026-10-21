@@ -81,12 +81,12 @@ def audit_config(cfg: dict, strategy_meta: dict) -> tuple[bool, list[dict]]:
     if not any(x["code"] in ("NOT_SPOT", "MARGIN_ON", "SHORT_ENABLED", "LEVERAGE_ON") for x in f):
         add("OK", "SPOT_NO_SHORT_NO_LEVERAGE", "Spot, long-only, unleveraged.")
 
-    # 5. Bounded sizing.
+    # 5. Bounded sizing (docs/Rules.md §5: never leave unlimited stake enabled).
     mot = cfg.get("max_open_trades")
     if not isinstance(mot, int) or mot < 1:
         add("BLOCK", "UNBOUNDED_OPEN_TRADES", f"max_open_trades={mot!r} must be a positive bound.")
     if cfg.get("stake_amount") == "unlimited":
-        add("WARN", "UNLIMITED_STAKE", "stake_amount='unlimited' => one all-in spot position; needs explicit approval.")
+        add("BLOCK", "UNLIMITED_STAKE", "stake_amount='unlimited' => all-in position; bounded sizing is mandatory.")
     else:
         add("OK", "STAKE_BOUND", f"stake_amount={cfg.get('stake_amount')}")
 

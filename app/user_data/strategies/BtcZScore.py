@@ -92,15 +92,23 @@ class BtcZScore(IStrategy):
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        dataframe.loc[
-            (dataframe["z_cross_up"] == 1) & (dataframe["volume"] > 0),
-            "enter_long",
-        ] = 1
+        mask = (dataframe["z_cross_up"] == 1) & (dataframe["volume"] > 0)
+        dataframe.loc[mask, "enter_long"] = 1
+        # Reasoning tag surfaces in Freqtrade's Telegram entry notification so the
+        # owner can see *why* an entry fired (z-score crossing the bull threshold).
+        if mask.any() and "zscore" in dataframe.columns:
+            dataframe.loc[mask, "enter_tag"] = (
+                "z_cross_up z=" + dataframe.loc[mask, "zscore"].round(3).astype(str)
+                + " >= " + str(self.bull_threshold)
+            )
         return dataframe
 
     def populate_exit_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        dataframe.loc[
-            (dataframe["z_cross_dn"] == 1),
-            "exit_long",
-        ] = 1
+        mask = dataframe["z_cross_dn"] == 1
+        dataframe.loc[mask, "exit_long"] = 1
+        if mask.any() and "zscore" in dataframe.columns:
+            dataframe.loc[mask, "exit_tag"] = (
+                "z_cross_dn z=" + dataframe.loc[mask, "zscore"].round(3).astype(str)
+                + " <= " + str(self.exit_threshold)
+            )
         return dataframe

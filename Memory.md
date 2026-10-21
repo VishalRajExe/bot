@@ -49,6 +49,10 @@ decisions/outcomes. Do not conflate the two.
 - Paper only. No live keys. No leverage/margin/shorts. Preserve `1.0` spot multiplier.
 - Keep `fiat_display_currency` unset → no CoinGecko runtime calls.
 - AI learning loop may propose/annotate but never auto-change approved rules or place orders.
+- **Bounded sizing is mandatory.** `stake_amount="unlimited"` is a preflight BLOCK, not a
+  warning. The agent PROPOSES bounded settings for owner approval; it never self-authorizes
+  risk (docs/Rules.md §5). BTC stays the single live baseline pair; extra pairs / FVG-OB are
+  research-only until a backtest + written owner approval.
 
 ## Log
 - 2026-10-20 Phase 0 complete → docs/Phase0_Audit.md. Install verified. Alpaca creds 401.
@@ -117,10 +121,41 @@ decisions/outcomes. Do not conflate the two.
   400-candle warm-up): **41 trades, +1326%, CAGR 38.93%, maxDD 22.88% (wallet 35.79%), win 41.5%**.
   Same-window buy-and-hold = +1112%, CAGR 36.20% → strategy is only **marginally** above holding on a
   41-trade sample and still does **NOT reproduce the source's 65.92%/26.79% claim. No edge is proven.**
+- 2026-10-21 **BOUNDED-RISK CORRECTION (owner/reviewer flag).** Prior preflight self-authorized
+  `stake_amount="unlimited"` — a docs/Rules.md §5 violation. Stopped the running unlimited bot;
+  config converted to BOUNDED (`stake_amount=5000`, `available_capital=100000`, `max_open_trades=1`);
+  `app/configs/risk_approval.json` rewritten (revision 2) as an explicit BOUNDED PROPOSAL — paper-only
+  approved / live NOT approved / FVG-OB pending. `preflight.py` upgraded UNLIMITED_STAKE WARN→**BLOCK**
+  (test `test_unlimited_stake_is_blocked`). Preflight → STAKE_BOUND, TRADING READY True, exit 0.
+- 2026-10-21 **FVG/OB exact-sequence strategy (RESEARCH ONLY, decision #2/#3).** Deterministic pure core
+  `app/strategies_core/fvg_ob.py`: 3-candle FVG, confirmed swings, Wilder ATR, EMA bias, order blocks;
+  `SetupTracker` state machine enforces bias→zone→**tap**→new-5M-FVG→**first** retest→long entry at
+  close, fixed 1:2 RR, spot/long-only, per-step timestamps, no-lookahead (close-time events),
+  restart-safe via `state_store.py` (intent JSON, not exec truth). 21 tests in `app/tests/test_fvg_ob.py`.
+  `app/scripts/discover_assets.py` (read-only): availability from Alpaca `/v2/assets` crypto list,
+  eligibility = relative-liquidity/data-quality/spread proposal → **enables nothing** (enabled=0);
+  output `app/configs/asset_universe.json` (73 avail, 6 eligible incl. BTC baseline). Full spec:
+  `docs/Strategy_FVG_OB.md`.
+- 2026-10-21 **FVG/OB research backtest — NO edge shown.** `app/scripts/research_fvg_backtest.py`
+  replays the tested core on REAL Alpaca 1H+5M candles (NOT a second engine). Free-tier 5M depth ≈8 days.
+  Shipped `require_overlap=True` → 0 setups in-window; sensitivity `--no-overlap` → BTC 5(2W/2L/1TO),
+  ETH 3(0W/3L), XRP 1(0W/1L), LINK 4(0W/4L): ~17% win rate (< 33% breakeven for 1:2), negative net-R
+  after fees on every pair. Pessimistic tie-break (stop first). Kept research-only; activates nothing.
+  Fixed a replay bug where a wedged tracker (no re-arm after invalidation/stale tap) suppressed all
+  setups — evaluate now supersedes an incomplete pre-entry setup on the next bullish 1H FVG, never an
+  ENTRY/POSITION.
+- 2026-10-21 **Telegram DETAIL notifications.** `app/notifications/format.py` (pure, 3 tests in
+  `test_notifications.py`): `format_signal_report` (baseline decision + inputs + bounded risk),
+  `format_fvg_ob_setup` (per-step timestamps + 1:2 RR), `format_status`. `BtcZScore` now sets
+  `enter_tag`/`exit_tag` (z-score reasoning) so Freqtrade's Telegram entry/exit messages carry *why*.
+  config telegram `notification_types` expanded (entry/exit/filled/profit/protection/status/…).
+  `app/scripts/test_notify.py` sends real formatted samples (no orders) — delivery verified (ok=True ×3).
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
-- Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20170817-20261019 --enable-protections` (or `python app/scripts/run_backtest.py`)
+- Backtest (BTC baseline, binance proxy): `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20170817-20261019 --enable-protections` (or `python app/scripts/run_backtest.py`)
+- FVG/OB research (read-only, needs .env keys): `python app/scripts/discover_assets.py --top 20 --write`  ·  `python app/scripts/research_fvg_backtest.py --pair ETH/USD` (add `--no-overlap` for sensitivity)
+- Telegram delivery check (sends a message, no order): `python app/scripts/test_notify.py` (`--dry` to preview)
 - Preflight gate (read-only, must pass before any restart): `python app/scripts/preflight.py`  (exit 3 = BLOCKED, 4 = live/unsafe)
 - Ledger: `python app/scripts/build_ledger.py`
 - Dashboard: `streamlit run app/dashboard/app.py` (http://127.0.0.1:8501)

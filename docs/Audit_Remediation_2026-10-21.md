@@ -139,3 +139,39 @@ Per the owner's directive, no restart was performed. To restart paper trading, t
 4. Then decide whether to start `python app/scripts/run_paper.py` and re-establish `reconcile.py --watch`.
 
 Until those hold, `preflight.py` returns exit 3 and the system correctly refuses to report healthy.
+
+---
+
+## 8. Addendum — bounded-risk correction + FVG/OB research (2026-10-21)
+
+**Reviewer flag (accepted).** A prior session had the coding agent create
+`risk_approval.json` while leaving `stake_amount="unlimited"` — the agent had
+silently self-authorized open-ended sizing, violating `docs/Rules.md §5` (owner must
+approve numeric risk; unlimited sizing is forbidden). Correction applied:
+
+1. **Stopped** the running unlimited-stake paper bot before any further change.
+2. **Bounded** the paper config: `stake_amount=5000`, `available_capital=100000`,
+   `max_open_trades=1` → max exposure is bounded, not all-in.
+3. `preflight.py` upgraded `UNLIMITED_STAKE` from WARN to a hard **BLOCK**
+   (test `test_unlimited_stake_is_blocked` asserts BLOCK + not-ready). Unlimited stake
+   can no longer pass the gate at all.
+4. `risk_approval.json` **rewritten (revision 2)** as an explicit BOUNDED *proposal*:
+   paper-only **approved**, live **NOT approved**, FVG/OB **pending**. The agent proposes
+   bounded settings; the owner approves them — not the reverse.
+
+**FVG/OB research (decision #2/#3).** Built a deterministic, step-gated sequence in the
+*research layer* only (`app/strategies_core/`), never wired to the executor: exact
+bias→zone→tap→new-5M-FVG→first-retest order, per-step timestamps, fixed 1:2 RR,
+spot/long-only, no-lookahead, restart-safe state. 21 unit+integration tests. Read-only
+`discover_assets.py` separates *availability* (Alpaca asset list) from *eligibility*
+(liquidity/data-quality/spread) and **enables nothing**. `research_fvg_backtest.py`
+replays the tested core on real Alpaca candles — **not a second trading engine** (per the
+owner's explicit instruction not to add one just to obtain a backtester). Result: the
+strict sequence yields 0 setups in the available ~8-day window; a relaxed sensitivity
+yields ~12 setups at ≈17% win rate, negative after fees → **no demonstrated edge**. Full
+spec and numbers in `docs/Strategy_FVG_OB.md`.
+
+**BTC baseline preserved.** The live strategy is unchanged (`BtcZScore`, one pair); FVG/OB
+is not activated and adds no pairs. Telegram now carries richer detail (reasoning tags +
+a pure formatter with verified delivery). Net test count 55 → 76 (FVG/OB + notifications),
+all passing; preflight green under bounded sizing.

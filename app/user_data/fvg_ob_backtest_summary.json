@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-10-21T09:01:08.694942+00:00",
+  "venue": "Alpaca PAPER (ccxt fetch_ohlcv)",
+  "pair": "BTC/USD",
+  "config": {
+    "bias_ema": 50,
+    "atr_n": 14,
+    "swing_k": 2,
+    "require_overlap": false,
+    "rr": 2.0,
+    "stop_atr_mult": 0.5,
+    "zone_ttl_bars": 48
+  },
+  "data": {
+    "bars_1h": 720,
+    "span_1h": "2026-09-21 10:00:00+00:00 -> 2026-10-21 09:00:00+00:00",
+    "bars_5m": 2304,
+    "span_5m": "2026-10-13 09:05:00+00:00 -> 2026-10-21 09:00:00+00:00"
+  },
+  "setups": 5,
+  "wins": 2,
+  "losses": 2,
+  "timeouts": 1,
+  "win_rate_of_decided": 0.5,
+  "gross_r": 2.0,
+  "fee_r": 4.31,
+  "net_r": -2.31,
+  "breakeven_win_rate_1to2": 0.3333,
+  "assumptions": [
+    "entry filled at retest-bar close (core rule)",
+    "intra-bar TP/stop order unknown -> ties counted as STOP (pessimistic)",
+    "round-trip fee 0.50% applied to decided trades",
+    "not the live Freqtrade engine; research replay of the pure core only"
+  ],
+  "statistically_significant": false
+}

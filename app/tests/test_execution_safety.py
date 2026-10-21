@@ -110,10 +110,13 @@ def test_missing_approval_keeps_trading_disabled(monkeypatch):
     assert "RISK_APPROVAL_MISSING" in _codes(f)
 
 
-def test_unlimited_stake_warns(monkeypatch):
+def test_unlimited_stake_is_blocked(monkeypatch):
+    # docs/Rules.md §5: unlimited sizing is forbidden -> must BLOCK, not just warn.
     monkeypatch.setattr(P, "approval_exists", lambda: True)
     ready, f = P.audit_config(_safe_cfg(stake_amount="unlimited"), _safe_meta())
-    assert "UNLIMITED_STAKE" in _codes(f)   # WARN, not silent
+    assert "UNLIMITED_STAKE" in _codes(f)
+    assert any(x["code"] == "UNLIMITED_STAKE" and x["level"] == "BLOCK" for x in f)
+    assert ready is False  # a BLOCK keeps trading disabled even with approval present
 
 
 def test_safe_config_with_approval_is_ready(monkeypatch):

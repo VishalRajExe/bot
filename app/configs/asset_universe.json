@@ -1,0 +1,303 @@
+{
+  "assets": [
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": true,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 129797.04,
+      "name": "Bitcoin  / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.0336,
+      "symbol": "BTC/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 35636.79,
+      "name": "Ethereum / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.029,
+      "symbol": "ETH/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 27228.39,
+      "name": "Ripple / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.2527,
+      "symbol": "XRP/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 20802.66,
+      "name": "USD Tether / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.1234,
+      "symbol": "USDT/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": false,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 10317.65,
+      "name": "Avalanche / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.5485,
+      "symbol": "AVAX/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 7986.8,
+      "name": "Polkadot / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.1634,
+      "symbol": "DOT/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 7261.08,
+      "name": "Chainlink / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.2246,
+      "symbol": "LINK/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 6868.11,
+      "name": "Cardano / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.3069,
+      "symbol": "ADA/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": false,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 6012.44,
+      "name": "Pax Gold / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 1.1001,
+      "symbol": "PAXG/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": false,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 4277.37,
+      "name": "Litecoin / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.601,
+      "symbol": "LTC/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 3811.5,
+      "name": "Dogecoin / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.3053,
+      "symbol": "DOGE/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 3497.13,
+      "name": "Aave / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.1924,
+      "symbol": "AAVE/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": false,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 3335.31,
+      "name": "Bitcoin Cash / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.5745,
+      "symbol": "BCH/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 2676.18,
+      "name": "Ondo / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.4761,
+      "symbol": "ONDO/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 2398.29,
+      "name": "Hype / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.4913,
+      "symbol": "HYPE/USD",
+      "taker_fee_pct": 0.25
+    }
+  ],
+  "counts": {
+    "available": 73,
+    "eligible": 6,
+    "enabled": 0,
+    "proposed_candidates": 5
+  },
+  "generated_at": "2026-10-21T08:49:35.369545+00:00",
+  "policy": {
+    "availability": "Alpaca tradable crypto asset list",
+    "btc": "baseline strategy (kept separate from FVG/OB)",
+    "eligibility": ">= 25/30 daily bars AND top-25% notional (cutoff ~$7,261 median daily, relative because Alpaca's crypto volume feed is thin) AND verified spread <= 0.5%",
+    "enabling": "requires backtest + owner approval; script never enables"
+  },
+  "source": "Alpaca /v2/assets?asset_class=crypto + crypto bars/quotes (PAPER)"
+}

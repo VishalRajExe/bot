@@ -1,17 +1,33 @@
 {
-  "_purpose": "Owner risk-approval record consumed by app/scripts/preflight.py (approval_exists gate). Its presence lets TRADING READY go green ONLY if every BLOCK-level config check also passes. It documents the specific limits the owner approved; it does not itself weaken any check.",
-  "approved_by": "VishalRajExe (owner)",
+  "_purpose": "Owner risk configuration consumed by app/scripts/preflight.py (approval_exists gate). Presence + zero BLOCK => TRADING READY for ALPACA PAPER ONLY. This file PROPOSES bounded numeric limits; it does NOT authorize unlimited sizing, live trading, or un-vetted strategies.",
+  "revision": 2,
+  "supersedes": "v1 (self-authored, permitted stake_amount='unlimited') — withdrawn as a Rules.md §5 violation (agent must not self-authorize financial risk / enable unlimited sizing).",
+  "status": {
+    "alpaca_paper": "APPROVED_BY_OWNER for bounded paper-only testing (owner directive 2026-10-21: pick correct bounded settings and proceed with paper-only startup checks).",
+    "live_trading": "NOT APPROVED — forbidden. Requires separate explicit owner approval + clean multi-week paper reconciliation.",
+    "additional_pairs_and_fvg_ob": "PENDING OWNER APPROVAL — stays disabled until each strategy is backtested for the intended pairs and passes its own acceptance + risk checks."
+  },
+  "approved_by": "VishalRajExe (owner) for PAPER only",
   "approved_on": "2026-10-21",
-  "authorization": "Owner explicitly approved these candidate thresholds/limits and authorized a bounded ALPACA PAPER restart to observe live behavior. No live-money trading is approved.",
   "scope": {
     "mode": "paper_only",
     "endpoint": "https://paper-api.alpaca.markets",
     "real_money": false,
-    "pair": "BTC/USD",
-    "timeframe": "1d",
-    "strategy": "BtcZScore"
+    "live_baseline_pair": "BTC/USD",
+    "live_baseline_strategy": "BtcZScore",
+    "note": "BTC keeps its existing Z-score baseline. New strategies are research/pending, not live."
   },
-  "strategy_parameters": {
+  "bounded_limits": {
+    "stake_amount_usd_per_trade": 5000,
+    "max_open_trades": 1,
+    "available_capital_usd": 100000,
+    "max_total_exposure_usd": 5000,
+    "stoploss": -0.35,
+    "rationale": "stake_amount is a FIXED cap (never 'unlimited'). With max_open_trades=1, worst-case new-position exposure is 5000 USD (~5% of a 100k paper account), independent of account growth. The 0.35 stoploss further bounds per-trade loss. This is deliberately conservative for paper validation and is raised ONLY by a new owner-approved revision."
+  },
+  "baseline_strategy_parameters": {
+    "strategy": "BtcZScore",
+    "timeframe": "1d",
     "zscore_period": 65,
     "bull_threshold": 0.5,
     "exit_threshold": 0.0,
@@ -19,23 +35,25 @@
     "startup_candle_count": 400,
     "can_short": false,
     "leverage": 1.0,
-    "note": "Thresholds are the labeled CANDIDATE defaults; owner approves them for PAPER evaluation only. Source '65.92% CAGR' claim is NOT reproduced and is NOT accepted as fact."
-  },
-  "position_sizing": {
-    "max_open_trades": 1,
-    "stake_amount": "unlimited",
-    "acknowledged_risk": "stake_amount='unlimited' means one all-in spot position on the paper account (~full equity). Approved for paper observation; MUST be bounded before any live consideration.",
-    "preflight_warn": "UNLIMITED_STAKE remains a WARN by design (documented approval), not a BLOCK."
+    "threshold_status": "CANDIDATE defaults, NOT source-verified. Kept for research/observation; owner approves running them in PAPER only. Source '65.92% CAGR' claim is NOT reproduced and NOT accepted as fact."
   },
   "protections": [
-    { "method": "CooldownPeriod", "stop_duration_candles": 2 },
-    { "method": "MaxDrawdown", "lookback_period_candles": 90, "trade_limit": 5, "stop_duration_candles": 7, "max_allowed_drawdown": 0.25 },
-    { "method": "StoplossGuard", "lookback_period_candles": 30, "trade_limit": 3, "stop_duration_candles": 14, "only_per_pair": true }
+    { "method": "CooldownPeriod", "stop_duration_candles": 2, "purpose": "prevent re-entry immediately after an exit" },
+    { "method": "MaxDrawdown", "lookback_period_candles": 90, "trade_limit": 5, "stop_duration_candles": 7, "max_allowed_drawdown": 0.25, "purpose": "halt trading after 25% account drawdown over ~90 days" },
+    { "method": "StoplossGuard", "lookback_period_candles": 30, "trade_limit": 3, "stop_duration_candles": 14, "only_per_pair": true, "purpose": "rest a pair after 3 stoplosses in 30 candles" }
   ],
   "guardrails": [
     "Spot only, long-only, unleveraged; no borrowing, no margin, no shorts.",
-    "AI/research layer may annotate only; it must never change these approved rules or place orders.",
-    "Reconciliation (app/scripts/reconcile.py) runs on a cadence; any CRITICAL/OFFLINE/STALE status stops promotion.",
-    "No promotion to real money without a separate explicit owner approval and a clean multi-week paper reconciliation."
+    "AI/research layer may annotate only; it must never change approved rules, sizing, or place orders.",
+    "One authoritative order executor; the app must never auto-switch to live.",
+    "Reconciliation must prove liveness + freshness + broker + identity-reconciled orders and can never report HEALTHY while offline/stale/drifted.",
+    "Any new numeric limit, timeframe, pair, or strategy requires a new owner-approved revision of THIS file.",
+    "Preflight must return TRADING READY: True with zero BLOCK and no 'unlimited' stake before any paper start."
+  ],
+  "pending_items": [
+    "Per-pair FVG/OB risk profile (bounded stake, stop buffer, max concurrent, portfolio exposure caps) — after backtest.",
+    "Enabled multi-asset whitelist — validated against live Alpaca asset metadata + liquidity ranking.",
+    "Dashboard multi-asset/multi-strategy redesign — Phase follow-up.",
+    "Full 5M/1H Alpaca-parity backtest (blocked by Freqtrade 2026.9 Alpaca backtest auth limitation; research proxy used and labelled)."
   ]
 }
