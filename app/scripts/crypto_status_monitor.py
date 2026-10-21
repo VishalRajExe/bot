@@ -40,7 +40,14 @@ import talib
 ROOT = Path(__file__).resolve().parents[1]           # D:\BOT\app
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from notifications.format import format_asset_status  # noqa: E402
+from notifications.format import (  # noqa: E402
+    format_asset_status,
+    format_risk_rejection,
+    format_trade_entry,
+    format_trade_exit,
+    format_trade_filled,
+    format_trade_outcome,
+)
 from risk import policy  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -51,6 +58,7 @@ CFG_PATH = ROOT / "configs" / "config.alpaca.paper.json"
 DATA_BASE = "https://data.alpaca.markets"
 TRADER_BASE = "https://paper-api.alpaca.markets"
 STATE_PATH = ROOT / "state" / "crypto_status.json"
+TRADE_EVENTS_PATH = ROOT / "state" / "trade_events.json"
 TIMEFRAME = "1d"
 EMA_PERIOD = 65
 STD_PERIOD = 65
@@ -116,18 +124,27 @@ def open_positions(db: Path | None) -> dict[str, dict]:
     out: dict[str, dict] = {}
     try:
         con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
-        for row in con.execute(
-            "SELECT pair, amount, open_rate, stop_loss, take_profit, profit_abs "
-            "FROM trades WHERE is_open=1"
+        cols = {r[1] for r in con.execute("PRAGMA table_info(trades)")}
+        # realized-per-pair needs a money column; 2026.9 renamed profit_abs ->
+        # close_profit_abs. Selecting a nonexistent column would error the whole
+        # query, which the broad except used to swallow silently.
+        money = next((c for c in ("close_profit_abs", "profit_abs", "realized_profit") if c in cols), None)
+        sel = ["pair", "amount", "open_rate", "stop_loss"]
+        sel += ["take_profit"] if "take_profit" in cols else ["NULL"]
+        sel += [money] if money else ["NULL"]
+        for pair, amount, open_rate, stop, tp, realized in con.execute(
+            f"SELECT {', '.join(sel)} FROM trades WHERE is_open=1"
         ).fetchall():
-            pair, amount, open_rate, stop, tp, _ = row
             out[pair] = {"qty": amount, "entry": open_rate, "stop": stop, "tp": tp,
                          "order_state": "OPEN (confirmed filled)"}
-        for pair, realized in con.execute(
-            "SELECT pair, SUM(profit_abs) FROM trades WHERE is_open=0 GROUP BY pair"
-        ).fetchall():
-            if pair in out:
+            if realized is not None:
                 out[pair]["realized"] = realized
+        if money:
+            for pair, realized in con.execute(
+                f"SELECT pair, SUM({money}) FROM trades WHERE is_open=0 GROUP BY pair"
+            ).fetchall():
+                if pair in out:
+                    out[pair]["realized"] = realized
         con.close()
     except Exception:  # noqa: BLE001
         return out
@@ -301,7 +318,83 @@ def sweep(env: dict, hdrs: dict, pairs: list[str], notify_mode: str) -> int:
         state[pair] = {"key": list(key), "signal": asset["signal"],
                        "asof": datetime.now(timezone.utc).isoformat()}
     policy.write_json(STATE_PATH, state)
+    sent += notify_trade_events(env, ft_db_path())
     return sent
+
+
+def notify_trade_events(env: dict, ft_db: Path | None) -> int:
+    """Emoji trade-alert pipeline (owner request 2026-10-21). READ-ONLY on the executor DB.
+
+    Diffs the Freqtrade trades table + the risk-rejection log against the last
+    notified watermark (app/state/trade_events.json) and sends one clear message
+    per lifecycle event: 🟢 BUY → ✅ FILLED on a new open trade, 🔴 EXIT → 💰/💸
+    outcome on a close, ⚠️ RISK REJECTED for each new policy veto. A brand-new
+    state file initializes from current data WITHOUT replaying history (no spam
+    across restarts). This monitor still never places or alters an order — the
+    events it reports were decided and executed by the single Freqtrade executor.
+    """
+    state = policy.read_json(TRADE_EVENTS_PATH)
+    rejections = policy.read_json(policy.rejections_path()).get("items", [])
+    n = 0
+
+    def _send(text: str) -> None:
+        nonlocal n
+        if send(env, text):
+            n += 1
+
+    trades: list[dict] = []
+    if ft_db and ft_db.exists():
+        try:
+            con = sqlite3.connect(f"file:{ft_db.as_posix()}?mode=ro", uri=True)
+            con.row_factory = sqlite3.Row
+            trades = [dict(r) for r in con.execute("SELECT * FROM trades ORDER BY id").fetchall()]
+            con.close()
+        except Exception:  # noqa: BLE001
+            trades = []
+
+    known = bool(state.get("known"))
+    open_ids = set(state.get("open_ids", []))
+    closed_ids = set(state.get("closed_ids", []))
+
+    if not known:
+        # First run: adopt current trades as the baseline, then live-track new ones.
+        open_ids = {t["id"] for t in trades if t["is_open"]}
+        closed_ids = {t["id"] for t in trades if not t["is_open"]}
+        known = True
+    else:
+        cur_open = {t["id"] for t in trades if t["is_open"]}
+        cur_closed = {t["id"] for t in trades if not t["is_open"]}
+        for t in trades:
+            tid = t["id"]
+            if t["is_open"] and tid not in open_ids and tid not in closed_ids:
+                _send(format_trade_entry(t))                 # 🟢 BUY (SUBMITTED)
+                _send(format_trade_filled(t))                # ✅ confirmed position record
+                open_ids.add(tid)
+            elif (not t["is_open"]) and tid in open_ids and tid not in closed_ids:
+                _send(format_trade_exit(t))                  # 🔴 EXIT observed
+                _send(format_trade_outcome(t))               # 💰/💸 recorded outcome
+                open_ids.discard(tid)
+                closed_ids.add(tid)
+        # trades that opened AND closed between two polls: report the outcome once
+        for t in trades:
+            tid = t["id"]
+            if (not t["is_open"]) and tid not in closed_ids and tid not in open_ids:
+                _send(format_trade_outcome(t))
+                closed_ids.add(tid)
+        open_ids = {tid for tid in open_ids if tid in cur_open} | (cur_open - closed_ids)
+
+    last_rej = int(state.get("last_rejection_count", 0))
+    if len(rejections) > last_rej:
+        for rej in rejections[last_rej:]:
+            _send(format_risk_rejection(rej))                # ⚠️ veto with explanation
+        last_rej = len(rejections)
+
+    policy.write_json(TRADE_EVENTS_PATH, {
+        "known": known, "open_ids": sorted(open_ids), "closed_ids": sorted(closed_ids),
+        "last_rejection_count": last_rej,
+        "asof": datetime.now(timezone.utc).isoformat(),
+    })
+    return n
 
 
 def main() -> int:

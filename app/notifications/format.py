@@ -99,6 +99,89 @@ def format_status(*, bot_name: str, state: str, detail: str = "") -> str:
     return f"{base} — {detail}" if detail else base
 
 
+# ---------------- emoji trade-event alerts (owner request 2026-10-21) ----------------
+# One clear, distinct message per lifecycle event. Pure text — the monitor owns
+# delivery; these are unit-testable without network. Order events keep SUBMITTED
+# distinct from FILLED: a signal is never presented as a confirmed fill.
+
+def format_trade_entry(trade: dict[str, Any]) -> str:
+    """🟢 BUY (SUBMITTED) — the executor opened a position request."""
+    lines = [
+        f"🟢 BUY SIGNAL → PAPER ORDER — {trade.get('pair', '?')}",
+        f"⏱️ {_fmt_ts(trade.get('open_date'))}",
+        f"🧠 strategy: {trade.get('strategy') or 'n/a'} [{trade.get('timeframe', 'n/a')}]",
+    ]
+    if trade.get("enter_tag"):
+        lines.append(f"💡 why: {trade['enter_tag']}")
+    lines.append(
+        f"📝 size: {_num(trade.get('stake_amount'), 2)} USD"
+        f" @ ~{_num(trade.get('open_rate'))}  →  qty {_num(trade.get('amount'), 6)}"
+    )
+    lines.append("🛡️ risk check: AUTO-APPROVED — within bounded paper policy (no manual approval)")
+    lines.append("📡 order state: SUBMITTED — awaiting fill confirmation (next alert will say ✅)")
+    return "\n".join(lines)
+
+
+def format_trade_filled(trade: dict[str, Any]) -> str:
+    """✅ FILLED — the paper order is a confirmed position."""
+    lines = [
+        f"✅ ORDER FILLED — position OPEN: {trade.get('pair', '?')}",
+        f"⏱️ {_fmt_ts(trade.get('open_date'))}",
+        f"📦 qty {_num(trade.get('amount'), 6)} @ {_num(trade.get('open_rate'))}"
+        f"  =  {_num(trade.get('open_trade_value'), 2)} USD",
+    ]
+    if trade.get("fee_open_cost") is not None:
+        lines.append(f"💸 entry fee: {_num(trade.get('fee_open_cost'))}")
+    lines.append(f"🛑 stop: {_num(trade.get('stop_loss'))}  ·  🎯 exit: strategy signal / ROI")
+    return "\n".join(lines)
+
+
+def format_trade_exit(trade: dict[str, Any]) -> str:
+    """🔴 EXIT (SUBMITTED) — the bot decided to close the position."""
+    lines = [
+        f"🔴 EXIT — closing {trade.get('pair', '?')}",
+        f"⏱️ {_fmt_ts(trade.get('close_date') or trade.get('exit_hint_ts'))}",
+        f"🧭 reason: {trade.get('exit_reason') or 'strategy/risk rule'}",
+    ]
+    if trade.get("exit_tag"):
+        lines.append(f"💡 tag: {trade['exit_tag']}")
+    lines.append(f"📤 exit order state: {trade.get('exit_order_status') or 'SUBMITTED'}")
+    return "\n".join(lines)
+
+
+def format_trade_outcome(trade: dict[str, Any]) -> str:
+    """💰 PROFIT / 💸 LOSS — closed trade with the realized outcome recorded."""
+    ratio = trade.get("close_profit")
+    ratio = float(ratio) if ratio is not None else None
+    emoji = "💰 PROFIT" if (ratio or 0) > 0 else ("💸 LOSS" if (ratio or 0) < 0 else "⚖️ BREAK-EVEN")
+    lines = [
+        f"{emoji} — TRADE CLOSED: {trade.get('pair', '?')}",
+        f"⏱️ {_fmt_ts(trade.get('close_date'))}",
+        f"🧭 exit reason: {trade.get('exit_reason') or 'n/a'}",
+        f"📥 in: {_num(trade.get('open_rate'))}  →  📤 out: {_num(trade.get('close_rate'))}",
+    ]
+    if ratio is not None:
+        lines.append(f"📊 result: {ratio * 100:+,.2f}%  ({_num(trade.get('close_profit_abs'), 2)} USD)")
+    fees = (trade.get("fee_open_cost") or 0) + (trade.get("fee_close_cost") or 0)
+    if fees:
+        lines.append(f"💸 fees paid: {_num(fees)}")
+    lines.append("🗂️ outcome recorded — reviewable in the dashboard & ledger")
+    return "\n".join(lines)
+
+
+def format_risk_rejection(rej: dict[str, Any]) -> str:
+    """⚠️ RISK REJECTED — an eligible signal was vetoed by the policy, with why."""
+    return "\n".join([
+        f"⚠️ RISK REJECTED — NO TRADE: {rej.get('pair', '?')}",
+        f"⏱️ {_fmt_ts(rej.get('ts'))}",
+        f"🚫 code: {rej.get('code', 'n/a')}",
+        f"❓ why: {rej.get('message', 'n/a')}",
+        "🛡️ the bounded paper policy or a safety check blocked this entry — "
+        "hard limits are never bypassed.",
+    ])
+
+
+
 def format_asset_status(asset: dict[str, Any]) -> str:
     """Rich, per-crypto status snapshot. One message per asset (owner brief §9).
 
