@@ -41,7 +41,11 @@ class BtcZScore(IStrategy):
     ignore_roi_if_entry_signal = False
 
     process_only_new_candles = True
-    startup_candle_count = zscore_period + 5
+    # Warm-up: recursive-analysis (2026-10-21) showed the daily z-score is ~22% off
+    # at 70 startup candles, ~0.2% at 200, and converges to <0.01% only around 400
+    # (talib EMA65 seed + rolling STD65). 400 startup candles gives a converged, stable
+    # baseline. No lookahead/recursive bias was detected at any depth.
+    startup_candle_count = 400
 
     order_types = {
         "entry": "market",

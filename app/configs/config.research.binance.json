@@ -1,5 +1,5 @@
 {
-  "_comment": "UnboundBot research/backtest config #2. Public Binance BTC/USDT daily (full history). USDT used as USD proxy for research only. dry_run local simulation, no broker orders.",
+  "_comment": "UnboundBot RESEARCH/backtest config #2 — public Binance BTC/USDT daily (full history), USDT as USD proxy. dry_run local simulation; NO broker, NO orders. Rationale: Freqtrade 2026.9 cannot load Alpaca's private asset/metadata endpoint during backtest (alpaca is not Freqtrade-native), so strategy research uses public binance candles. RESEARCH PROXY, NOT Alpaca execution parity (docs/Phase0_Audit.md sec.5). Contains no secrets; safe to commit.",
   "trading_mode": "spot",
   "margin_mode": "",
   "max_open_trades": 1,

@@ -10,12 +10,27 @@ decisions/outcomes. Do not conflate the two.
   but is too new for the pinned native deps — do not use it.
 - `uv 0.11.21`. Docker NOT installed. ta-lib 0.8.2 via binary wheel (works).
 - Run Freqtrade with: `D:\BOT\.venv\Scripts\freqtrade.exe --userdir D:\BOT\app\user_data -c <config>`.
-- Strategy path: `D:\BOT\app\strategies` (pass `--strategy-path` or set `strategy_path`).
+- **Authoritative strategy path: `D:\BOT\app\user_data\strategies\BtcZScore.py`** — this is the
+  file Freqtrade loads via `--userdir app/user_data` (no `--strategy-path`). The old duplicate at
+  `app/strategies/BtcZScore.py` was removed 2026-10-21 (audit TASK 4); see `app/strategies/README.md`.
 
 ## Decisions
 - **Route B**: target Alpaca directly via CCXT on the local checkout; no fork.
-- Research/backtest data source: **Kraken BTC/USD** (public, USD-quoted). Caveat:
-  not the Alpaca feed → results are research, not execution parity.
+- **Feature completeness by inheritance, not duplication.** We do NOT copy Freqtrade source into
+  `app/` (that would be a second, drifting engine). Our app is a thin layer (strategy, configs,
+  scripts, dashboard, ledger) running ON the full Freqtrade 2026.9 engine installed into `.venv`
+  (`uv pip install -e freqtrade-stable`). So the app already has all Freqtrade fundamentals —
+  protections, backtesting, hyperopt, lookahead/recursive analysis, dry-run semantics, restart
+  reconciliation, FreqAI/telegram available — PLUS our extras (observation ledger, liveness
+  reconciliation, preflight gate, status-aware dashboard). Engine checkout is gitignored.
+- Research/backtest data source: **Binance BTC/USDT** public daily candles (see
+  `app/configs/config.research.binance.json`). Rationale (verified 2026-10-21): Freqtrade
+  2026.9 cannot load **Alpaca** markets for `backtesting` — ccxt-alpaca's `load_markets()`
+  calls the *private* `traderPrivateGetV2Assets` endpoint, and the backtest exchange bootstrap
+  does not authenticate it (`AuthenticationError: alpaca requires "apiKey"` even with valid
+  keys injected via env or inline config). Alpaca is not a Freqtrade-native exchange. Live/paper
+  trade mode DOES authenticate, so this is a backtest-only limitation. Caveat: binance data is a
+  research proxy, not the Alpaca feed → not execution parity.
 - Strategy `BtcZScore`: long-only spot, daily Z=(close-EMA65)/STD65. Thresholds are
   **candidate defaults** (bull=0.5, exit=0.0), NOT source-verified.
 
@@ -75,9 +90,38 @@ decisions/outcomes. Do not conflate the two.
   (signals/fills/costs/reconcile/risk/exposure+drawdown, honest "insufficient sample" for daily bot).
   Dashboard "Observation" tab renders live (verified): OK, $100k equity, drift 0, 0 trades. `--watch` loop
   or a scheduled task establishes the observation cadence. Time-based phase — accumulate weeks before judgments.
+- 2026-10-21 **AUDIT REMEDIATION — corrected the false-OK Phase 10 model above.** The prior
+  `OK|REVIEW|BROKER_UNREACHABLE` model could report `OK` merely because there was no apparent drift,
+  even with the executor dead. It is replaced by a defined, precedence-ordered status model
+  `CRITICAL > OFFLINE > BROKER_UNREACHABLE > STALE > REVIEW > HEALTHY` (the literal `OK` is retired):
+  reconcile now proves process liveness (PID + heartbeat age), market-data freshness (candle age),
+  broker reachability, DB readability, portfolio qty match, and order reconciliation **by identity**
+  (ID set-difference, not count). It can NEVER report HEALTHY while offline/stale/drifted/corrupt.
+  Live evidence on first re-run: reconcile returned **CRITICAL — broker holds 0.06024 BTC that the
+  Freqtrade DB does not account for (drift 0.0602)** — a real unreconciled paper position the old
+  `OK` would have hidden. Weekly fees now use monetary `fee_open_cost`+`fee_close_cost` (not the
+  `fee_open`/`fee_close` rates) and count missing records as a lower bound. `app/scripts/preflight.py`
+  gates any restart; `docs/Audit_Remediation_2026-10-21.md` is the full evidence report.
+- 2026-10-21 **TASK 3 — first real automated test suite.** `pytest` installed (9.1.1) into the
+  venv via `uv pip install`. Root `pytest.ini` scopes collection to `app/tests` (never the vendored
+  `freqtrade-stable/` suite). 55 tests, all passing, fully mocked/credential-free (no orders, no
+  network, no bot start): `test_strategy.py` (10 — warm-up NaN, zero-variance, determinism, bull/bear
+  transitions, volume-gated entry, **no-lookahead append-invariance**, NaN-close safety),
+  `test_reconcile.py` (25 — classify_status precedence + snapshot() proving offline/stale/corrupt-DB/
+  drift can never yield HEALTHY, identity set-diff), `test_reporting.py` (6 — monetary fees, missing/
+  empty/incomplete), `test_execution_safety.py` (14 — preflight fail-closed BLOCKs, submit≠filled
+  never-healthy, idempotent replay). Run: `python -m pytest` from repo root.
+- 2026-10-21 **TASK 5/7 — startup warm-up + reproducible backtest.** startup_candle_count raised
+  70→**400** (recursive-analysis: z-score ~22% off at 70, <0.01% at 400). Backtest (binance research
+  proxy, `--enable-protections`, timerange 20170817-20261019 → effective 2018-09-21→2026-10-19 after
+  400-candle warm-up): **41 trades, +1326%, CAGR 38.93%, maxDD 22.88% (wallet 35.79%), win 41.5%**.
+  Same-window buy-and-hold = +1112%, CAGR 36.20% → strategy is only **marginally** above holding on a
+  41-trade sample and still does **NOT reproduce the source's 65.92%/26.79% claim. No edge is proven.**
 
 ## How to run
-- Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20180101- --enable-protections`
+- Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
+- Backtest: `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20170817-20261019 --enable-protections` (or `python app/scripts/run_backtest.py`)
+- Preflight gate (read-only, must pass before any restart): `python app/scripts/preflight.py`  (exit 3 = BLOCKED, 4 = live/unsafe)
 - Ledger: `python app/scripts/build_ledger.py`
 - Dashboard: `streamlit run app/dashboard/app.py` (http://127.0.0.1:8501)
 - Live dry-run: `freqtrade trade -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --dry-run`

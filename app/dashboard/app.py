@@ -388,12 +388,17 @@ with tab_obs:
     else:
         latest = rec.iloc[0]
         status = str(latest["status"])
-        _col = {"OK": "green", "REVIEW": "orange", "BROKER_UNREACHABLE": "red"}.get(status, "gray")
+        _col = {"HEALTHY": "green", "OK": "green", "REVIEW": "orange",
+                "STALE": "orange", "OFFLINE": "red", "BROKER_UNREACHABLE": "red",
+                "CRITICAL": "red"}.get(status, "gray")
         s1, s2, s3, s4 = st.columns(4)
         s1.metric("Last reconcile", f"{status}", help=str(latest["detail"]))
         s2.metric("Broker equity", f"${float(latest['broker_equity'] or 0):,.0f}")
         s3.metric("Qty drift", f"{float(latest['qty_drift'] or 0):.6f}")
-        s4.metric("Unmatched broker orders", f"{int(latest['unmatched_broker_orders'] or 0)}")
+        _hb = latest["heartbeat_age_s"] if "heartbeat_age_s" in rec.columns else None
+        s4.metric("Heartbeat age",
+                  (f"{float(_hb):,.0f}s" if _hb is not None else "n/a"),
+                  help="process_alive=" + str(latest.get("process_alive")))
         st.badge(f"Latest status: {status}", color=_col)
         st.caption(f"as of {latest['ts']} · strategy `{latest['strategy'] or '—'}` · "
                    f"{len(rec)} snapshot(s) retained")

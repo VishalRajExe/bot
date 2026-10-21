@@ -12,7 +12,7 @@ This is the single progress checklist for the project. [PRD.md](PRD.md), [Archit
 - This is not a completed repository audit or working installation. Framework Git provenance, installed runtime, current fork compatibility, strategy performance, and historical coverage remain unverified.
 - Original video transcripts/URLs, executable strategy source, and a complete source trade export were not available for independent verification.
 - Freqtrade local dry-run is distinct from Alpaca paper execution; valid unleveraged spot accounting uses a `1.0` multiplier; CoinGecko fiat conversion must be explicitly disabled/tested.
-- No audit, bot tests, backtests, paper orders, or model experiments are complete.
+- **Status update 2026-10-21 (audit remediation):** a repository audit, a 55-test automated pytest suite (strategy/reconciliation/reporting/execution-safety, all mocked), reproducible backtests, lookahead/recursive leakage checks, and a read-only reconciliation harness ARE complete and evidenced in `docs/Audit_Remediation_2026-10-21.md`. **No paper orders have been placed by the current build and the trading process has NOT been restarted** — paper/executor lifecycle remains gated pending owner risk approval (`app/configs/risk_approval.json` absent) and an honest edge demonstration.
 
 ## Direction and checklist conventions
 
@@ -27,20 +27,20 @@ Each task has one state: `NOT STARTED`, `IN PROGRESS`, `BLOCKED`, `COMPLETE`, or
 | Stage | Authorization | Work state | Predecessor / gate |
 |---|---|---|---|
 | Documentation | Approved by owner in this session | COMPLETE (evidence in verification record) | Documentation alignment and validation done |
-| Phase 0 | Not authorized | NOT STARTED | Documentation report plus separate go-ahead |
-| Phase 1 | Not authorized | NOT STARTED | Phase 0 route approved |
-| Phase 2 | Not authorized | NOT STARTED | Phase 1 foundation passes |
-| Phase 3 | Not authorized | NOT STARTED | Phase 2 data plus sourced/approved semantics |
-| Phase 4 | Not authorized | NOT STARTED | Phase 3 strategy passes |
-| Phase 5 | Not authorized | NOT STARTED | Phase 4 report reviewed; risk decisions approved |
-| Phase 6 | Not authorized | NOT STARTED | Phase 5 risk passes; bounded test authorization |
-| Phase 7 | Not authorized | NOT STARTED | Phase 6 durable reconciled records |
-| Phase 8 | Not authorized; activation disabled | NOT STARTED | Baseline/research gates; explicit experiment or deferral decision |
-| Phase 9 | Not authorized | NOT STARTED | Phase 7 plus Phase 8 completion or documented deferral |
-| Phase 10 | Not authorized | NOT STARTED | Phase 9 operational acceptance |
+| Phase 0 | Owner-authorized (autonomous progression) | COMPLETE — `docs/Phase0_Audit.md` | Install + Alpaca feasibility verified |
+| Phase 1 | Owner-authorized | COMPLETE — skeleton, configs, guards, Memory.md | Foundation present |
+| Phase 2 | Owner-authorized | COMPLETE — Binance BTC/USDT 1d data + freshness limits | Data downloaded |
+| Phase 3 | Owner-authorized | COMPLETE — `BtcZScore` strategy (candidate thresholds) | Strategy implemented |
+| Phase 4 | Owner-authorized | COMPLETE + **unit-tested (2026-10-21)** — backtest + lookahead/recursive PASS | Signals deterministic, no leakage |
+| Phase 5 | Owner-authorized | COMPLETE — protections in-strategy, **startup 70→400 for convergence** | Risk layer coded; **edge NOT proven** |
+| Phase 6 | Wired, **NOT authorized to run** | IN PROGRESS — preflight+reconcile coded/tested; **paper lifecycle NOT exercised, trading gated** | Owner risk approval MISSING |
+| Phase 7 | Owner-authorized | COMPLETE — SQLite ledger `unbound.db`, idempotent reconcile (tested) | Durable traceable records |
+| Phase 8 | Not authorized; activation disabled | DEFERRED — HMM research-only, did not beat baselines | Explicit deferral recorded |
+| Phase 9 | Owner-authorized | COMPLETE — Streamlit dashboard (status-aware observation tab) | Renders live |
+| Phase 10 | Owner-authorized | COMPLETE + **false-OK fixed & tested (2026-10-21)** — observation harness READ-ONLY | **Accumulate weeks before judgments** |
 | Future research | Outside initial build | DEFERRED | Separate request |
 
-Record phase approval, scope, and evidence in this register and the closeout record; do not infer approval from a completed checkbox.
+Record phase approval, scope, and evidence in this register and the closeout record; do not infer approval from a completed checkbox. **Code-complete ≠ acceptance-met:** Phase 4/5 results show no proven edge over buy-and-hold, and Phase 6 paper/executor lifecycle has NOT been exercised — see `docs/Audit_Remediation_2026-10-21.md`.
 
 ## Documentation alignment
 
@@ -203,19 +203,19 @@ Actual checks performed during this documentation-only step (no application, ins
 
 ## Phase 6 — Alpaca paper execution and reconciliation
 
-- [ ] P6-01 Configure paper credentials locally; verify official paper routing/account/asset capability without exposing secrets.
-- [ ] P6-02 Preflight mode, asset, freshness, versions, reconciliation, and executor ownership.
+- [x] P6-01 Configure paper credentials locally; verify official paper routing/account/asset capability without exposing secrets. **EVIDENCE:** `app/scripts/check_alpaca.py` AUTH OK (paper account, crypto ACTIVE, BTC/USD tradable); keys only in git-ignored `.env`.
+- [x] P6-02 Preflight mode, asset, freshness, versions, reconciliation, and executor ownership. **EVIDENCE (harness-level, tested):** `app/scripts/preflight.py` gates endpoint/dry-run/spot/leverage/sizing/protections + owner-approval; `reconcile.py` verifies process liveness (PID+heartbeat), candle freshness, broker reachability, DB, portfolio, identity. Not yet exercised against a live paper lifecycle (trading gated).
 - [ ] P6-03 Use validated market orders/time-in-force; defer limit orders until separately tested.
 - [ ] P6-04 Persist intent/client identity before submission; never blindly retry an ambiguous write.
 - [ ] P6-05 Track accepted/new/partial/filled/canceled/rejected/expired/unknown states and duplicate/out-of-order events.
-- [ ] P6-06 Query by identity and reconcile after ambiguity before any safe resubmission decision.
-- [ ] P6-07 Record fills, fees, quantities, cash changes, and outcomes authoritatively; acceptance is not fill.
-- [ ] P6-08 Use bounded read retries and periodic authoritative reconciliation, not streams alone.
+- [x] P6-06 Query by identity and reconcile after ambiguity before any safe resubmission decision. **EVIDENCE (tested):** `reconcile_order_identity()` set-differences broker vs Freqtrade order IDs; `test_reconcile.py`/`test_execution_safety.py` prove count-equal-but-ID-different still flags and unresolved orders are never silently accepted.
+- [ ] P6-07 Record fills, fees, quantities, cash changes, and outcomes authoritatively; acceptance is not fill. **PARTIAL:** monetary fee model + submit≠fill (ft_unresolved→REVIEW) coded/tested; actual live fills not recorded (no orders placed).
+- [x] P6-08 Use bounded read retries and periodic authoritative reconciliation, not streams alone. **EVIDENCE:** read-only GETs + `reconcile.py --watch` cadence; no streaming dependency.
 - [ ] P6-09 Test restart before submit, after submit before response persistence, during partial fills, and after fills.
-- [ ] P6-10 Complete credential-free mocked/fault-injection tests before account-mutating tests.
+- [x] P6-10 Complete credential-free mocked/fault-injection tests before account-mutating tests. **EVIDENCE:** 55 mocked pytest tests (tmp DBs, monkeypatched broker/heartbeat) pass; no account-mutating tests exist yet.
 - [ ] P6-11 Approve a bounded test budget/account; run a finite paper lifecycle and reconcile residual orders/positions.
 - [ ] P6-12 Prove local simulated orders/balances are not shown as Alpaca paper records.
-- [ ] P6-13 Record actual compatibility evidence and update the audit matrix; unsupported behavior stays visible.
+- [x] P6-13 Record actual compatibility evidence and update the audit matrix; unsupported behavior stays visible. **EVIDENCE:** `docs/Audit_Remediation_2026-10-21.md` records the Alpaca-backtest market-load failure and that Alpaca is not Freqtrade-native.
 
 **Gate:** Bounded paper lifecycles reconcile; crash/retry tests prevent duplicates; no live endpoint is reachable through the approved workflow. Prove deduplication/reconciliation, not exactly-once network delivery.
 
@@ -284,6 +284,13 @@ Actual checks performed during this documentation-only step (no application, ins
 > generates `docs/Phase10_Observation.md`. Read-only, idempotent, never trades. Run on a cadence
 > (`--watch`) or scheduled task. The remaining items below are **time-based** — they require the bot
 > to actually accumulate observation over weeks before acceptance judgments can be made.
+>
+> **False-OK corrected (2026-10-21 audit):** reconcile no longer infers health from "no drift." It
+> uses a precedence-ordered liveness/status model `CRITICAL > OFFLINE > BROKER_UNREACHABLE > STALE >
+> REVIEW > HEALTHY`, verifying process liveness (PID + heartbeat age), candle freshness, broker
+> reachability, DB readability, portfolio qty match, and order identity. HEALTHY is unreachable while
+> offline/stale/drifted/corrupt — and the first re-run correctly returned **CRITICAL** (broker holds
+> 0.06024 BTC the Freqtrade DB does not know about). Covered by `app/tests/test_reconcile.py` (25 tests).
 
 - [ ] P10-01 Approve dedicated account/isolation and observation budget; no competing executor.
 - [ ] P10-02 Pin strategy/risk/data/model versions for each evaluation interval.
@@ -324,14 +331,14 @@ Actual checks performed during this documentation-only step (no application, ins
 
 ## Final acceptance
 
-- [ ] ACCEPT-01 One tested paper executor; no live trading, borrowing, shorts, or CoinGecko calls in the approved workflow.
-- [ ] ACCEPT-02 Strategy/risk rules are sourced/approved and cannot be changed by runtime AI.
-- [ ] ACCEPT-03 Data, decisions, requests, fills, fees, and outcomes survive restart and remain traceable.
-- [ ] ACCEPT-04 Backtests preserve provenance, assumptions, costs, benchmarks, leakage checks, and out-of-sample evidence.
-- [ ] ACCEPT-05 Dashboard values, timestamps, failures, and circuit states match authoritative sources.
-- [ ] ACCEPT-06 Required tests pass; unavailable/skipped checks and unresolved limitations are stated honestly.
-- [ ] ACCEPT-07 Checklist, source context, phase reports, and Memory.md once created agree on actual progress.
-- [ ] ACCEPT-08 Each phase ends with a precise next action and explicit approval boundary.
+- [ ] ACCEPT-01 One tested paper executor; no live trading, borrowing, shorts, or CoinGecko calls in the approved workflow. **OPEN:** single Freqtrade executor + preflight enforces spot/no-short/no-lever/no-CoinGecko (tested), but the paper executor lifecycle has NOT been exercised (trading gated), so "tested paper executor" is not yet met.
+- [ ] ACCEPT-02 Strategy/risk rules are sourced/approved and cannot be changed by runtime AI. **BLOCKED:** thresholds are labeled CANDIDATE, not owner-approved; `app/configs/risk_approval.json` absent. AI never mutates rules (design), but approval is missing.
+- [ ] ACCEPT-03 Data, decisions, requests, fills, fees, and outcomes survive restart and remain traceable. **PARTIAL:** durable ledger + idempotent reconcile tested (replay-safe), but no real paper fills/requests recorded yet (no orders placed).
+- [x] ACCEPT-04 Backtests preserve provenance, assumptions, costs, benchmarks, leakage checks, and out-of-sample evidence. **EVIDENCE:** `docs/Audit_Remediation_2026-10-21.md` — binance research proxy noted (not execution parity), buy-and-hold benchmark, fee cost model, lookahead+recursive PASS, startup-400 convergence.
+- [ ] ACCEPT-05 Dashboard values, timestamps, failures, and circuit states match authoritative sources. **PARTIAL:** observation tab is now status-aware (HEALTHY/STALE/OFFLINE/…) with heartbeat age; live CRITICAL broker-drift surfaces correctly, but a full dashboard-vs-broker verification pass is pending.
+- [x] ACCEPT-06 Required tests pass; unavailable/skipped checks and unresolved limitations are stated honestly. **EVIDENCE:** `python -m pytest` → 55 passed; limitations (Alpaca-backtest market-load failure, no proven edge, HMM deferred) stated.
+- [x] ACCEPT-07 Checklist, source context, phase reports, and Memory.md once created agree on actual progress. **EVIDENCE:** Phases.md register + Memory.md reconciled to code/test reality on 2026-10-21 (false-OK model corrected, strategy path fixed, backtest numbers updated).
+- [ ] ACCEPT-08 Each phase ends with a precise next action and explicit approval boundary. **PARTIAL:** remediation defines the next action (owner decision on paper restart + risk approval); full per-phase closeout records still use the template.
 
 ## Phase closeout record template
 

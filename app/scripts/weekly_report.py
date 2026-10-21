@@ -30,6 +30,27 @@ def _rows(con, q, args=()):
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
+def summarize_fees(trades: list[dict]) -> dict:
+    """Monetary fee totals from Freqtrade's *cost* fields, NOT the rate fields.
+
+    Freqtrade stores fee_open/fee_close as RATES (e.g. 0.001) and fee_open_cost/
+    fee_close_cost as the actual money deducted. We sum the cost fields and count
+    records where the cost is missing/null so 'unknown' is never silently '0'
+    (Phases.md P4-03/P6-07). Returns dict with total_cost, missing_count, trades_count.
+    """
+    total = 0.0
+    missing = 0
+    for t in trades:
+        oc = t.get("fee_open_cost")
+        cc = t.get("fee_close_cost")
+        ok = oc is not None and cc is not None
+        if not ok:
+            missing += 1
+        total += float(oc or 0.0) + float(cc or 0.0)
+    return {"total_cost": round(total, 6), "missing_count": missing,
+            "trades_count": len(trades)}
+
+
 def collect(days: int) -> dict:
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=days)
@@ -78,7 +99,7 @@ def collect(days: int) -> dict:
     if eq and eq[-1]["equity"]:
         exposure = round(eq[-1]["position_value"] / eq[-1]["equity"] * 100, 2)
 
-    fees = sum((t["fee_open"] or 0) + (t["fee_close"] or 0) for t in trades_all)
+    fee_summary = summarize_fees(trades_all)
     realized = sum((t["profit_abs"] or 0.0) for t in trades_all if t["is_open"] == 0)
 
     return {
@@ -89,7 +110,7 @@ def collect(days: int) -> dict:
         "recs": recs, "statuses": statuses, "max_drift": max_drift,
         "review_runs": review_runs, "eq": eq, "eq_start": eq_start,
         "eq_end": eq_end, "peak": peak, "max_dd": max_dd, "exposure": exposure,
-        "last": last, "locks": locks, "fees": fees, "realized": realized,
+        "last": last, "locks": locks, "fee_summary": fee_summary, "realized": realized,
         "db": str(db),
     }
 
@@ -122,15 +143,26 @@ def render(d: dict) -> str:
               f"| {t['enter_tag'] or '-'} |")
     if n_open == 0 and n_close == 0:
         A("")
-        A("> Daily-timeframe bot on a single pair (BTC/USD). Zero signals in this "
-          "window is expected and is NOT evidence of a stall — it means the Z-score "
-          "entry condition was not met. **Insufficient sample for statistical "
-          "significance; do not extrapolate edge from this interval.**")
+        _last_status = (d["last"] or {}).get("status") if d.get("last") else None
+        if _last_status in (None, "OFFLINE", "STALE", "BROKER_UNREACHABLE", "CRITICAL"):
+            A(f"> No trades in this window **and the latest reconcile status is "
+              f"`{_last_status or 'NONE'}`** — treat this as UNVERIFIED, not benign. "
+              f"Confirm the executor is alive and data is fresh (§3) before concluding "
+              f"the strategy simply saw no signal.")
+        else:
+            A("> Daily-timeframe bot on a single pair (BTC/USD). Zero signals in this "
+              "window — with the executor HEALTHY — means the Z-score entry condition was "
+              "not met. **Insufficient sample for statistical significance; do not "
+              "extrapolate edge from this interval.**")
     A("")
 
     A("## 2. Orders, fills & costs")
     A(f"- Total mirrored trades (all-time in ledger): **{len(d['trades_all'])}**")
-    A(f"- Cumulative fees booked in ledger: **{round(d['fees'], 4)}**")
+    fs = d["fee_summary"]
+    A(f"- Cumulative monetary fees (fee_open_cost + fee_close_cost): **{fs['total_cost']}**")
+    if fs["missing_count"]:
+        A(f"  - ⚠ {fs['missing_count']} trade record(s) have missing/null fee cost — "
+          f"total is a **lower bound**, not zero-unknown (P4-03).")
     A(f"- Realized P&L (closed trades): **{round(d['realized'], 4)}**")
     if d["trades_all"]:
         A("")
@@ -148,14 +180,22 @@ def render(d: dict) -> str:
     if d["recs"]:
         A(f"- Status mix: " + ", ".join(f"{k}={v}" for k, v in sorted(d["statuses"].items())))
         A(f"- Max absolute position qty drift: **{d['max_drift']}**")
-        A(f"- Last snapshot: `{d['last']['ts']}` → **{d['last']['status']}** — {d['last']['detail']}")
-        if d["review_runs"]:
+        last = d["last"]
+        A(f"- Last snapshot: `{last['ts']}` → **{last['status']}** — {last['detail']}")
+        A(f"  - liveness @ last snapshot: process_alive={last.get('process_alive')} "
+          f"heartbeat_age_s={last.get('heartbeat_age_s')} candle_age_h={last.get('candle_age_h')} "
+          f"unmatched_broker_orders={last.get('unmatched_broker_orders')} "
+          f"ft_unresolved_orders={last.get('ft_unresolved_orders')} "
+          f"active_locks={last.get('active_locks')}")
+        _nonhealthy = [r for r in d["recs"] if r["status"] not in ("HEALTHY", "OK")]
+        if _nonhealthy:
             A("")
-            A("### ⚠ Runs flagged REVIEW (needs attention)")
-            for r in d["review_runs"]:
-                A(f"- `{r['ts']}` — {r['detail']}")
+            A(f"### ⚠ {len(_nonhealthy)} snapshot(s) not HEALTHY")
+            for r in _nonhealthy[-10:]:
+                A(f"- `{r['ts']}` **{r['status']}** — {r['detail']}")
         else:
-            A("- No drift / unmatched broker activity / external orders detected. ✅")
+            A("- All snapshots HEALTHY: executor alive, data fresh, broker reachable, "
+              "portfolio reconciled, no external orders/locks.")
     else:
         A("- No reconcile snapshots yet — run `python app/scripts/reconcile.py` "
           "(or `--watch`) to populate this section.")
@@ -178,10 +218,10 @@ def render(d: dict) -> str:
         A(f"- Peak equity in window: **{round(d['peak'],2)}**")
         A(f"- Max drawdown in window: **{round(d['max_dd']*100,3)}%**")
         A(f"- Current exposure (position/equity): **{d['exposure']}%**")
-    elif d["last"] and d["last"]["broker_equity"] is not None:
+    elif d["last"] and d["last"].get("broker_equity") is not None:
         lb = d["last"]
-        A(f"- Latest broker snapshot: cash={lb['broker_cash']} equity={lb['broker_equity']} "
-          f"buying_power={lb['broker_buying_power']} position_value={lb['broker_position_val']}")
+        A(f"- Latest broker snapshot: cash={lb.get('broker_cash')} equity={lb.get('broker_equity')} "
+          f"buying_power={lb.get('broker_buying_power')} position_value={lb.get('broker_position_val')}")
         A("- No equity time-series yet (needs repeated reconcile runs over days).")
     else:
         A("- Broker snapshot unavailable in window (see §3 status).")

@@ -11,15 +11,21 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import threading
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FT = ROOT / ".venv" / "Scripts" / "freqtrade.exe"
 CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
 USERDIR = ROOT / "app" / "user_data"
+STATE_FILE = ROOT / "app" / "state" / "paper_bot.json"
+HEARTBEAT_SECS = 20
 
 
 def load_env() -> None:
@@ -31,6 +37,23 @@ def load_env() -> None:
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
+
+
+def _write_state(payload: dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    tmp.replace(STATE_FILE)
+
+
+def _heartbeat_loop(proc: subprocess.Popen, base: dict) -> None:
+    """Touch last_heartbeat while the child lives so reconcile can prove liveness."""
+    while proc.poll() is None:
+        _write_state({**base, "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+                      "pid": proc.pid, "alive": True})
+        time.sleep(HEARTBEAT_SECS)
+    _write_state({**base, "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+                  "pid": proc.pid, "alive": False, "returncode": proc.returncode})
 
 
 def main() -> int:
@@ -56,7 +79,19 @@ def main() -> int:
         "--strategy", "BtcZScore", "--logfile", str(ROOT / ".ft_alpaca.log"),
     ]
     print("launching Alpaca PAPER bot ...")
-    return subprocess.call(args, env=env)
+    proc = subprocess.Popen(args, env=env)
+    base = {"bot_name": "unboundbot-alpaca-paper", "started": datetime.now(timezone.utc).isoformat()}
+    t = threading.Thread(target=_heartbeat_loop, args=(proc, base), daemon=True)
+    t.start()
+    try:
+        rc = proc.wait()
+    except KeyboardInterrupt:
+        proc.terminate()
+        rc = proc.wait()
+    _write_state({**base, "pid": proc.pid, "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+                  "alive": False, "returncode": rc})
+    return rc
+
 
 
 if __name__ == "__main__":

@@ -20,7 +20,14 @@ user_data/data/
 user_data/logs/
 user_data/backtest_results/
 user_data/notebooks/
-app/user_data/
+# app/user_data: keep hand-written SOURCE (strategies/, configs/) tracked,
+# ignore only downloaded/generated runtime data.
+app/user_data/data/
+app/user_data/logs/
+app/user_data/backtest_results/
+app/user_data/hyperopt_results/
+app/user_data/plot/
+app/user_data/notebooks/
 *.sqlite
 *.sqlite3
 tradesv3*.sqlite*
@@ -33,7 +40,7 @@ runtime/
 *.db
 *.db-journal
 app/research/artifacts/
-
+app/state/
 # --- Stray screenshots (local only) ---
 Screenshot*.png
 phases_rendered.png
@@ -41,6 +48,10 @@ phases_rendered.png
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
+
+# --- Vendored upstream engine (installed into .venv via `uv pip install -e`);
+#     not our application source — see docs/Phase0_Audit.md sec.1. ---
+freqtrade-stable/
 
 # --- Verification screenshots (local only) ---
 phases_doc_checkboxes.png

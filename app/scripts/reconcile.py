@@ -3,31 +3,47 @@
 Cross-checks the two authoritative sources and mirrors them into the durable
 ledger WITHOUT ever touching the broker's trading state:
 
-  1. Freqtrade paper trade DB (D:/BOT/tradesv3.sqlite) — trades, open orders,
-     pair-lock (protection) events, and Freqtrade's own wallet snapshot.
+  1. Freqtrade paper trade DB (tradesv3.sqlite) — trades, orders (by identity),
+     pair-lock (protection) events, wallet snapshot.
   2. Alpaca PAPER account via read-only GETs — /v2/account, /v2/positions,
      /v2/orders?status=open.
+  3. Executor liveness — the bot's heartbeat/PID file (app/state/paper_bot.json)
+     and the freshness of the latest market candle on disk.
 
-Writes: paper_trades (mirror of Freqtrade trades), reconcile_log (one snapshot
-per run with a drift/discrepancy status), account_equity (daily equity + running
-drawdown from broker equity). No orders are placed and no secrets are printed.
+The status is a defined model — HEALTHY / STALE / OFFLINE / BROKER_UNREACHABLE /
+REVIEW / CRITICAL — and it can NEVER report HEALTHY when the executor is offline,
+the heartbeat is stale, market data is stale, or the portfolio does not reconcile.
+The pure decision logic lives in classify_status() so it is unit-testable without
+a live bot, DB, or broker. No orders are placed and no secrets are printed.
 
 Usage:
-  python app/scripts/reconcile.py            # one snapshot
-  python app/scripts/reconcile.py --watch 900  # repeat every 900s (Ctrl-C to stop)
+  python app/scripts/reconcile.py              # one snapshot
+  python app/scripts/reconcile.py --watch 900  # repeat every 900s (Ctrl-C stops)
 Exit codes: 0 = wrote a snapshot (any status), 2 = source unavailable.
 """
 from __future__ import annotations
 
+import os
 import signal
 import sys
 import time
 from datetime import datetime, timezone
 
-sys.path.insert(0, __file__.rsplit("\\", 1)[0] if "\\" in __file__ else __file__.rsplit("/", 1)[0])
+_HERE = __file__.rsplit("\\", 1)[0] if "\\" in __file__ else __file__.rsplit("/", 1)[0]
+sys.path.insert(0, _HERE)
 import obs_lib as O  # noqa: E402
 
-QTY_TOL = 1e-6
+# --- thresholds (candidate operational limits; NOT trading risk limits) ---
+QTY_TOL = 1e-6              # BTC quantity tolerance for portfolio match
+HEARTBEAT_MAX_AGE_S = 600   # bot must beat within this or it is OFFLINE
+CANDLE_MAX_AGE_H = 30.0     # daily candle older than this => STALE feed
+
+HEALTHY = "HEALTHY"
+STALE = "STALE"
+OFFLINE = "OFFLINE"
+BROKER_UNREACHABLE = "BROKER_UNREACHABLE"
+REVIEW = "REVIEW"
+CRITICAL = "CRITICAL"
 
 
 def _f(x, default=0.0) -> float:
@@ -37,106 +53,221 @@ def _f(x, default=0.0) -> float:
         return default
 
 
+def _pid_alive(pid) -> bool | None:
+    """Best-effort OS liveness. None when it cannot be determined (rely on heartbeat)."""
+    if not pid:
+        return None
+    try:
+        import psutil  # type: ignore
+        return psutil.pid_exists(int(pid))
+    except Exception:  # noqa: BLE001
+        pass
+    try:  # POSIX
+        os.kill(int(pid), 0)
+        return True
+    except (ProcessLookupError, ValueError):
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+
+
+def reconcile_order_identity(broker_open_ids, ft_open_ids):
+    """Match broker open orders to Freqtrade open orders BY IDENTITY, not by count.
+
+    Returns (unmatched_broker, unresolved_ft):
+      unmatched_broker: broker order ids with no Freqtrade counterpart (external/manual).
+      unresolved_ft:    Freqtrade open order ids the broker does not show as open
+                        (possibly filled/cancelled without FT update — never assume fill).
+    """
+    b = {str(x) for x in broker_open_ids if x}
+    f = {str(x) for x in ft_open_ids if x}
+    return len(b - f), len(f - b)
+
+
+def classify_status(s: dict) -> tuple[str, str]:
+    """Pure status decision. `s` is a signal dict; returns (status, detail).
+
+    Precedence: CRITICAL > OFFLINE > BROKER_UNREACHABLE > STALE > REVIEW > HEALTHY.
+    A non-HEALTHY result is guaranteed whenever the executor is offline/stale or the
+    portfolio does not reconcile — HEALTHY is unreachable on drift, stale heartbeat,
+    stale data, or a corrupt DB.
+    """
+    # --- CRITICAL: portfolio truth is broken or trading on the wrong endpoint ---
+    if not s.get("ft_db_ok", True):
+        return CRITICAL, "Freqtrade trade DB unreadable/corrupt — cannot reconcile."
+    if s.get("live_endpoint_suspected"):
+        return CRITICAL, "Resolved trader endpoint is NOT Alpaca paper — stop."
+    drift = _f(s.get("qty_drift", 0.0))
+    if abs(drift) > QTY_TOL:
+        return CRITICAL, (f"portfolio mismatch: broker qty {s.get('broker_position_qty')} "
+                          f"vs Freqtrade open amount {s.get('ft_open_amount')} "
+                          f"(drift {drift}).")
+
+    # --- OFFLINE: the executor is not provably running ---
+    hb = s.get("heartbeat_age_s")
+    alive = s.get("process_alive")
+    if alive is False or hb is None or (hb is not None and _f(hb) > HEARTBEAT_MAX_AGE_S):
+        why = "no heartbeat file" if hb is None else f"heartbeat age {_f(hb):.0f}s > {HEARTBEAT_MAX_AGE_S}s"
+        if alive is False:
+            why = "recorded PID not alive"
+        return OFFLINE, f"paper executor is OFFLINE ({why}); never reported healthy."
+
+    # --- BROKER_UNREACHABLE: alive but cannot confirm against the broker ---
+    if not s.get("broker_ok", False):
+        return BROKER_UNREACHABLE, "executor alive but Alpaca PAPER account not reachable."
+
+    # --- STALE: alive & broker ok but market data feed has stalled ---
+    age = s.get("candle_age_h")
+    if age is None or _f(age) > CANDLE_MAX_AGE_H:
+        why = "no candle data" if age is None else f"last candle {_f(age):.1f}h old > {CANDLE_MAX_AGE_H:.0f}h"
+        return STALE, f"market data is STALE ({why}); not healthy."
+
+    # --- REVIEW: reconciled but non-critical items need a human look ---
+    review = []
+    if int(s.get("active_locks", 0) or 0) > 0:
+        review.append(f"{s['active_locks']} active protection lock(s)")
+    if int(s.get("unmatched_broker_orders", 0) or 0) > 0:
+        review.append(f"{s['unmatched_broker_orders']} broker order(s) not owned by Freqtrade")
+    if int(s.get("ft_unresolved_orders", 0) or 0) > 0:
+        review.append(f"{s['ft_unresolved_orders']} Freqtrade open order(s) not shown open by broker")
+    if review:
+        return REVIEW, "; ".join(review) + " — needs attention."
+
+    return HEALTHY, "Executor alive, data fresh, broker reachable, portfolio reconciled."
+
+
 def _tables(con) -> set[str]:
     return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+
+def gather_signals(now: datetime | None = None) -> dict:
+    """Read every liveness / portfolio signal from real sources. Never places orders."""
+    now = now or datetime.now(timezone.utc)
+    s: dict = {"ft_db_ok": True, "live_endpoint_suspected": False,
+               "heartbeat_age_s": None, "process_alive": None, "candle_age_h": None,
+               "broker_ok": False, "broker_cash": None, "broker_equity": None,
+               "broker_buying_power": None, "broker_position_qty": 0.0,
+               "broker_position_val": 0.0, "broker_open_orders": 0,
+               "ft_open_trades": 0, "ft_open_amount": 0.0, "ft_open_orders": 0,
+               "total_trades": 0, "closed_trades": 0, "realized_abs": 0.0,
+               "active_locks": 0, "unmatched_broker_orders": 0, "ft_unresolved_orders": 0,
+               "qty_drift": 0.0, "strategy": None}
+
+    # strategy label + endpoint check from config (fallback when no trades yet)
+    try:
+        import json as _json
+        cfg = _json.loads(O.PAPER_CFG.read_text(encoding="utf-8"))
+        s["strategy"] = cfg.get("strategy")
+        trader_url = (cfg.get("exchange", {}).get("ccxt_config", {})
+                      .get("urls", {}).get("api", {}).get("trader", ""))
+        s["live_endpoint_suspected"] = bool(trader_url) and "paper-api.alpaca.markets" not in trader_url
+    except Exception:  # noqa: BLE001
+        pass
+
+    # --- liveness: heartbeat + PID ---
+    hb = O.read_heartbeat()
+    if hb:
+        s["process_alive"] = _pid_alive(hb.get("pid"))
+        try:
+            last = datetime.fromisoformat(hb.get("last_heartbeat")).replace(tzinfo=timezone.utc)
+            s["heartbeat_age_s"] = (now - last).total_seconds()
+        except Exception:  # noqa: BLE001
+            s["heartbeat_age_s"] = None
+
+    # --- liveness: market data freshness ---
+    s["candle_age_h"] = O.latest_candle_age_hours()
+
+    # --- Freqtrade execution record ---
+    db = O.ft_db_path()
+    if db is None:
+        s["ft_db_ok"] = False
+    else:
+        try:
+            c = O.ft_connect_ro(db)
+            tabs = _tables(c)
+            if "trades" in tabs:
+                rows = c.execute(
+                    "SELECT id,pair,is_open,open_date,close_date,open_rate,close_rate,"
+                    "stake_amount,amount,fee_open,fee_close,fee_open_cost,fee_close_cost,"
+                    "fee_open_currency,fee_close_currency,close_profit,close_profit_abs,"
+                    "exit_reason,enter_tag,leverage,is_short,strategy,timeframe "
+                    "FROM trades ORDER BY id").fetchall()
+                s["trades_rows"] = [dict(r) for r in rows]
+                s["total_trades"] = len(rows)
+                s["open_trades_list"] = [dict(r) for r in rows if r["is_open"]]
+                s["ft_open_trades"] = len(s["open_trades_list"])
+                s["ft_open_amount"] = sum(_f(r["amount"]) for r in s["open_trades_list"])
+                s["closed_trades"] = sum(1 for r in rows if not r["is_open"])
+                s["realized_abs"] = sum(_f(r["close_profit_abs"]) for r in rows if not r["is_open"])
+                if rows and rows[0]["strategy"]:
+                    s["strategy"] = rows[0]["strategy"]
+            else:
+                s["trades_rows"] = []
+            if "orders" in tabs:
+                fo = c.execute("SELECT order_id FROM orders WHERE ft_is_open=1").fetchall()
+                s["ft_open_order_ids"] = [r["order_id"] for r in fo]
+                s["ft_open_orders"] = len(fo)
+            else:
+                s["ft_open_order_ids"] = []
+            if "pairlocks" in tabs:
+                s["active_locks"] = c.execute(
+                    "SELECT COUNT(*) FROM pairlocks WHERE active=1").fetchone()[0]
+            c.close()
+        except Exception as e:  # noqa: BLE001
+            s["ft_db_ok"] = False
+            s["ft_db_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    # --- broker (Alpaca PAPER, read-only) ---
+    st, acct = O.alpaca_get("/v2/account")
+    if st == 200 and isinstance(acct, dict):
+        s["broker_ok"] = True
+        s["broker_cash"] = _f(acct.get("cash"))
+        s["broker_equity"] = _f(acct.get("equity"))
+        s["broker_buying_power"] = _f(acct.get("buying_power"))
+    st, pos = O.alpaca_get("/v2/positions")
+    if st == 200 and isinstance(pos, list):
+        for p in pos:
+            s["broker_position_qty"] += _f(p.get("qty"))
+            s["broker_position_val"] += _f(p.get("market_value"))
+    st, orders = O.alpaca_get("/v2/orders?status=open")
+    if st == 200 and isinstance(orders, list):
+        s["broker_open_orders"] = len(orders)
+        s["broker_open_order_ids"] = [o.get("id") for o in orders]
+
+    # --- portfolio + identity reconciliation ---
+    s["qty_drift"] = round(s["broker_position_qty"] - s["ft_open_amount"], 8)
+    if s["broker_ok"]:
+        unmatched, unresolved = reconcile_order_identity(
+            s.get("broker_open_order_ids", []), s.get("ft_open_order_ids", []))
+        s["unmatched_broker_orders"] = unmatched
+        s["ft_unresolved_orders"] = unresolved
+    return s
 
 
 def snapshot() -> dict:
     now = datetime.now(timezone.utc)
     ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     day = now.strftime("%Y-%m-%d")
+    s = gather_signals(now)
+    status, detail = classify_status(s)
 
-    # ---- Freqtrade side (authoritative execution record) ----
-    ft = {"open_trades": 0, "open_amount": 0.0, "open_orders": 0,
-          "total_trades": 0, "closed_trades": 0, "realized_abs": 0.0,
-          "active_locks": 0, "strategy": None}
-    try:
-        import json as _json
-        ft["strategy"] = _json.loads(O.PAPER_CFG.read_text(encoding="utf-8")).get("strategy")
-    except Exception:  # noqa: BLE001
-        pass
-    trades_rows: list[dict] = []
-    db = O.ft_db_path()
-    if db is not None:
-        c = O.ft_connect_ro(db)
-        tabs = _tables(c)
-        if "trades" in tabs:
-            rows = c.execute(
-                "SELECT id,pair,is_open,open_date,close_date,open_rate,close_rate,"
-                "stake_amount,amount,fee_open,fee_close,close_profit,close_profit_abs,"
-                "exit_reason,enter_tag,leverage,is_short,strategy,timeframe "
-                "FROM trades ORDER BY id"
-            ).fetchall()
-            trades_rows = [dict(r) for r in rows]
-            ft["total_trades"] = len(trades_rows)
-            ft["open_trades"] = sum(1 for r in trades_rows if r["is_open"])
-            ft["open_amount"] = sum(_f(r["amount"]) for r in trades_rows if r["is_open"])
-            ft["closed_trades"] = sum(1 for r in trades_rows if not r["is_open"])
-            ft["realized_abs"] = sum(_f(r["close_profit_abs"]) for r in trades_rows if not r["is_open"])
-            if trades_rows and trades_rows[0]["strategy"]:
-                ft["strategy"] = trades_rows[0]["strategy"]
-        if "orders" in tabs:
-            ft["open_orders"] = c.execute(
-                "SELECT COUNT(*) FROM orders WHERE ft_is_open=1").fetchone()[0]
-        if "pairlocks" in tabs:
-            ft["active_locks"] = c.execute(
-                "SELECT COUNT(*) FROM pairlocks WHERE active=1").fetchone()[0]
-        c.close()
-
-    # ---- Broker side (Alpaca PAPER, read-only) ----
-    broker = {"reachable": False, "cash": None, "equity": None, "buying_power": None,
-              "position_qty": 0.0, "position_val": 0.0, "open_orders": 0}
-    st, acct = O.alpaca_get("/v2/account")
-    if st == 200 and isinstance(acct, dict):
-        broker.update(reachable=True, cash=_f(acct.get("cash")),
-                      equity=_f(acct.get("equity")), buying_power=_f(acct.get("buying_power")))
-    st, pos = O.alpaca_get("/v2/positions")
-    if st == 200 and isinstance(pos, list):
-        for p in pos:
-            broker["position_qty"] += _f(p.get("qty"))
-            broker["position_val"] += _f(p.get("market_value"))
-    # 404 = no positions (fine). st in (-1,0,...) may mean unreachable below.
-    st, orders = O.alpaca_get("/v2/orders?status=open")
-    if st == 200 and isinstance(orders, list):
-        broker["open_orders"] = len(orders)
-
-    # ---- Reconciliation ----
-    qty_drift = round(broker["position_qty"] - ft["open_amount"], 8)
-    unmatched = 0
-    if broker["reachable"] and broker["open_orders"] > ft["open_orders"]:
-        unmatched = broker["open_orders"] - ft["open_orders"]
-
-    if not broker["reachable"]:
-        status = "BROKER_UNREACHABLE"
-        detail = "Alpaca PAPER /v2/account not reachable; Freqtrade-side snapshot only."
-    elif abs(qty_drift) > QTY_TOL or unmatched or ft["active_locks"]:
-        bits = []
-        if abs(qty_drift) > QTY_TOL:
-            bits.append(f"position qty drift {qty_drift}")
-        if unmatched:
-            bits.append(f"{unmatched} broker open order(s) beyond Freqtrade")
-        if ft["active_locks"]:
-            bits.append(f"{ft['active_locks']} active protection lock(s)")
-        status = "REVIEW"
-        detail = "; ".join(bits)
-    else:
-        status = "OK"
-        detail = "Freqtrade records reconcile with broker (no external/manual activity)."
-
-    # ---- Persist to ledger ----
     lc = O.ledger_connect()
-    for r in trades_rows:
+    # mirror trades (with monetary fee costs) — idempotent by Freqtrade id
+    for r in s.get("trades_rows", []):
         lc.execute(
             "INSERT OR REPLACE INTO paper_trades (id,source,pair,is_open,open_date,close_date,"
-            "open_rate,close_rate,stake_amount,amount,fee_open,fee_close,profit_ratio,profit_abs,"
+            "open_rate,close_rate,stake_amount,amount,fee_open,fee_close,fee_open_cost,"
+            "fee_close_cost,fee_open_currency,fee_close_currency,profit_ratio,profit_abs,"
             "exit_reason,enter_tag,leverage,is_short,strategy,timeframe,reconciled_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (r["id"], "alpaca_paper", r["pair"], 1 if r["is_open"] else 0, r["open_date"],
-             r["close_date"], _f(r["open_rate"], None) if r["open_rate"] is not None else None,
-             _f(r["close_rate"], None) if r["close_rate"] is not None else None,
+             r["close_date"], _opt(r["open_rate"]), _opt(r["close_rate"]),
              _f(r["stake_amount"]), _f(r["amount"]), _f(r["fee_open"]), _f(r["fee_close"]),
-             _f(r["close_profit"], None) if r["close_profit"] is not None else None,
-             _f(r["close_profit_abs"], None) if r["close_profit_abs"] is not None else None,
+             _opt(r["fee_open_cost"]), _opt(r["fee_close_cost"]),
+             r.get("fee_open_currency"), r.get("fee_close_currency"),
+             _opt(r["close_profit"]), _opt(r["close_profit_abs"]),
              r["exit_reason"], r["enter_tag"], _f(r["leverage"], 1.0),
              1 if r["is_short"] else 0, r["strategy"], r["timeframe"], ts),
         )
@@ -144,41 +275,49 @@ def snapshot() -> dict:
     lc.execute(
         "INSERT OR REPLACE INTO reconcile_log (ts,status,detail,broker_cash,broker_equity,"
         "broker_buying_power,broker_position_qty,broker_position_val,ft_open_trades,"
-        "ft_open_orders,broker_open_orders,unmatched_broker_orders,qty_drift,strategy,version_note) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (ts, status, detail, broker["cash"], broker["equity"], broker["buying_power"],
-         broker["position_qty"], broker["position_val"], ft["open_trades"], ft["open_orders"],
-         broker["open_orders"], unmatched, qty_drift, ft["strategy"], "unboundbot-alpaca-paper"),
+        "ft_open_orders,broker_open_orders,unmatched_broker_orders,ft_unresolved_orders,"
+        "active_locks,qty_drift,process_alive,heartbeat_age_s,candle_age_h,strategy,version_note) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (ts, status, detail, s.get("broker_cash"), s.get("broker_equity"),
+         s.get("broker_buying_power"), s["broker_position_qty"], s["broker_position_val"],
+         s["ft_open_trades"], s["ft_open_orders"], s["broker_open_orders"],
+         s["unmatched_broker_orders"], s["ft_unresolved_orders"], s["active_locks"],
+         s["qty_drift"], 1 if s.get("process_alive") else 0, s.get("heartbeat_age_s"),
+         s.get("candle_age_h"), s.get("strategy"), "unboundbot-alpaca-paper"),
     )
 
-    # Daily equity snapshot with running drawdown (only when broker reachable).
     dd = 0.0
-    if broker["reachable"] and broker["equity"] is not None:
-        prev_peak = lc.execute(
-            "SELECT MAX(equity) FROM account_equity").fetchone()[0]
-        peak = max(_f(prev_peak), broker["equity"])
-        dd = round((broker["equity"] - peak) / peak, 6) if peak else 0.0
+    if s["broker_ok"] and s.get("broker_equity") is not None:
+        prev_peak = lc.execute("SELECT MAX(equity) FROM account_equity").fetchone()[0]
+        peak = max(_f(prev_peak), s["broker_equity"])
+        dd = round((s["broker_equity"] - peak) / peak, 6) if peak else 0.0
         lc.execute(
             "INSERT OR REPLACE INTO account_equity (date,cash,equity,buying_power,"
             "position_value,drawdown,source) VALUES (?,?,?,?,?,?,?)",
-            (day, broker["cash"], broker["equity"], broker["buying_power"],
-             broker["position_val"], dd, "alpaca_paper"),
+            (day, s.get("broker_cash"), s["broker_equity"], s.get("broker_buying_power"),
+             s["broker_position_val"], dd, "alpaca_paper"),
         )
     lc.commit()
     lc.close()
+    s.update({"ts": ts, "status": status, "detail": detail,
+              "drawdown_pct": round(dd * 100, 3), "db": str(O.ft_db_path())})
+    return s
 
-    return {"ts": ts, "status": status, "detail": detail, "ft": ft,
-            "broker": broker, "qty_drift": qty_drift, "unmatched": unmatched,
-            "drawdown_pct": round(dd * 100, 3), "db": str(db)}
+
+def _opt(x):
+    """Return float or None (preserve 'unknown is not zero' for fee/profit fields)."""
+    try:
+        return None if x is None else float(x)
+    except (TypeError, ValueError):
+        return None
 
 
 def main() -> int:
-    for _s in (sys.stdout, sys.stderr):
+    for _st in (sys.stdout, sys.stderr):
         try:
-            _s.reconfigure(encoding="utf-8")
+            _st.reconfigure(encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
-
     watch = 0
     if "--watch" in sys.argv:
         i = sys.argv.index("--watch")
@@ -187,23 +326,21 @@ def main() -> int:
     def run_once() -> int:
         s = snapshot()
         print(f"[{s['ts']}] status={s['status']} — {s['detail']}")
-        print(f"    ft: trades={s['ft']['total_trades']} open={s['ft']['open_trades']} "
-              f"closed={s['ft']['closed_trades']} realized={round(s['ft']['realized_abs'],2)} "
-              f"open_orders={s['ft']['open_orders']} locks={s['ft']['active_locks']}")
-        b = s["broker"]
-        if b["reachable"]:
-            print(f"    broker: cash={b['cash']} equity={b['equity']} "
-                  f"pos_qty={b['position_qty']} open_orders={b['open_orders']} "
-                  f"drift={s['qty_drift']} dd={s['drawdown_pct']}%")
-        else:
-            print("    broker: UNREACHABLE (recorded ft-side only)")
-        print(f"    ft_db={s['db']}")
-        return 0 if b["reachable"] or s["ft"]["total_trades"] >= 0 else 2
+        print(f"    liveness: process_alive={s.get('process_alive')} "
+              f"heartbeat_age_s={s.get('heartbeat_age_s')} candle_age_h={s.get('candle_age_h')} "
+              f"broker_ok={s['broker_ok']} ft_db_ok={s['ft_db_ok']}")
+        print(f"    portfolio: drift={s['qty_drift']} broker_qty={s['broker_position_qty']} "
+              f"ft_open_amt={round(s['ft_open_amount'],6)} unmatched_broker_orders="
+              f"{s['unmatched_broker_orders']} ft_unresolved={s['ft_unresolved_orders']} "
+              f"locks={s['active_locks']}")
+        if s.get("broker_cash") is not None:
+            print(f"    account: cash={s['broker_cash']} equity={s['broker_equity']} "
+                  f"dd={s['drawdown_pct']}%  (trades total={s['total_trades']})")
+        return 0
 
     code = run_once()
     if watch <= 0:
         return code
-
     stop = {"f": False}
     signal.signal(signal.SIGINT, lambda *_: stop.update(f=True))
     signal.signal(signal.SIGTERM, lambda *_: stop.update(f=True))
