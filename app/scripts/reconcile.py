@@ -51,8 +51,9 @@ REVIEW = "REVIEW"
 CRITICAL = "CRITICAL"
 
 # Each executor has its own autoincrementing trade id, so mirror them into the shared
-# ledger under disjoint id ranges (daily: 1.., fast: 10_000_000+) to avoid collisions.
-_EXECUTOR_ID_BASE = {"daily": 0, "fast": 10_000_000}
+# ledger under disjoint id ranges (daily: 1.., fast: 10_000_000+, swing: 20_000_000+)
+# to avoid collisions.
+_EXECUTOR_ID_BASE = {"daily": 0, "fast": 10_000_000, "swing": 20_000_000}
 
 
 def _f(x, default=0.0) -> float:

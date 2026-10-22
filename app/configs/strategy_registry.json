@@ -1,11 +1,13 @@
 {
-  "_purpose": "Pair-to-strategy registry for the PAPER executors. Maps every monitored pair to its assigned strategy, executor, timeframe, version, tradeable state, and bounded risk profile. Consumed by app/user_data/strategies/PaperAutonomous.py (daily), app/user_data/strategies/MomentumAlt.py (fast), app/scripts/preflight.py, and app/scripts/crypto_status_monitor.py. BTC's baseline math is NOT defined here — it lives in BtcZScore and is preserved by subclassing.",
-  "revised": "2026-10-21 rev3 (CONSERVATIVE $100 paper preset; BTC stake raised to $15 = Alpaca minimum order notional; alts stay $10 pending venue-minimum check)",
+  "_purpose": "Pair-to-strategy registry for the PAPER executors. Maps every monitored pair to its assigned strategy family, executor, timeframe, version, tradeable state, and bounded risk profile. Consumed by app/user_data/strategies/PaperAutonomous.py (daily), FamilyDispatcher/MomentumAlt (fast 5m), FamilyDispatcher/SwingAlt (swing 1h), app/indicators/families.py (the per-family signal math routed by strategy_family), app/scripts/preflight.py, and app/scripts/crypto_status_monitor.py. BTC's baseline math is NOT defined here — it lives in BtcZScore and is preserved by subclassing.",
+  "revised": "2026-10-22 rev4 (MULTI-ASSET / MULTI-STRATEGY expansion, owner-approved plan): added SOL/UNI to the fast executor (LIVE-STRICT, pass the cost/liquidity gate); LINK reassigned to its improved link_trend family; added a THIRD disjoint 1h 'swing' executor carrying the PAPER-RELAXED wide-spread names LTC/AVAX/DOGE on cost-aware rsi_divergence/bb_squeeze families. Best-by-expectancy family per pair is finalized by the Phase C backtest pass.",
   "executor_strategy": "PaperAutonomous",
   "executor_timeframe": "1d",
   "fast_executor_strategy": "MomentumAlt",
   "fast_executor_timeframe": "5m",
-  "authorization": "Autonomous PAPER BUY/SELL/HOLD/EXIT for eligible non-BTC crypto under app/configs/paper_risk_policy.json (owner directive 2026-10-21). Alts trade intraday (5m momentum) on a SEPARATE, disjoint executor from the BTC daily baseline. PAPER ONLY — not live.",
+  "swing_executor_strategy": "SwingAlt",
+  "swing_executor_timeframe": "1h",
+  "authorization": "Autonomous PAPER BUY/SELL/HOLD/EXIT for eligible non-BTC crypto under app/configs/paper_risk_policy.json (owner directives 2026-10-21 / 2026-10-22). Alts trade intraday (5m) on the fast executor and hourly (1h swing) on the swing executor, each a SEPARATE, DISJOINT process from the BTC daily baseline. PAPER ONLY — not live.",
   "pairs": {
     "BTC/USD": {
       "status": "ACTIVE_BASELINE",
@@ -85,6 +87,24 @@
       "experimental": true,
       "executor": "fast",
       "strategy": "MomentumAlt",
+      "strategy_family": "link_trend",
+      "timeframe": "5m",
+      "version": "link-5m-trend-ema21x55-adx20-rsi50-experimental",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
+        "stoploss": -0.03,
+        "link_trend": { "ema_fast": 21, "ema_slow": 55, "rsi_period": 14, "adx_period": 14, "adx_min": 20.0, "rsi_buy": 50.0, "rsi_exit": 70.0 },
+        "note": "IMPROVED LINK (owner directive 2026-10-22): routed to the dedicated link_trend family (EMA21x55 trend + ADX>20 regime filter + RSI-50 pullback continuation) instead of the generic momentum cross. Runs on the fast 5m dispatcher. EXPERIMENTAL / forward-test only; the Phase C backtest confirms or reverts this assignment."
+      }
+    },
+    "SOL/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "executor": "fast",
+      "strategy": "MomentumAlt",
       "strategy_family": "momentum_ema_vol",
       "timeframe": "5m",
       "version": "alt-5m-mom-ema9x21-vol20-experimental",
@@ -94,7 +114,79 @@
         "max_planned_loss_usd": 2,
         "stoploss": -0.03,
         "momentum": { "ema_fast": 9, "ema_slow": 21, "vol_window": 20 },
-        "note": "EXPERIMENTAL intraday momentum paper. Forward-test data only."
+        "note": "LIVE-STRICT alt added in the multi-asset expansion (Phase A: SOL/USD tightest spread ~0.067% + deep liquidity). Fresh EMA9x21 cross-up + volume surge on the fast 5m dispatcher. EXPERIMENTAL / forward-test only; Phase C picks the best family."
+      }
+    },
+    "UNI/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "executor": "fast",
+      "strategy": "MomentumAlt",
+      "strategy_family": "momentum_ema_vol",
+      "timeframe": "5m",
+      "version": "alt-5m-mom-ema9x21-vol20-experimental",
+      "eligible": true,
+      "risk": {
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
+        "stoploss": -0.03,
+        "momentum": { "ema_fast": 9, "ema_slow": 21, "vol_window": 20 },
+        "note": "LIVE-STRICT alt added in the multi-asset expansion (Phase A: UNI/USD spread ~0.163% + sufficient notional, passes the strict gate). Fresh EMA9x21 cross-up + volume surge on the fast 5m dispatcher. EXPERIMENTAL / forward-test only."
+      }
+    },
+    "LTC/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "executor": "swing",
+      "strategy": "SwingAlt",
+      "strategy_family": "bb_squeeze",
+      "timeframe": "1h",
+      "version": "swing-1h-bbsqueeze-experimental",
+      "eligible": false,
+      "risk": {
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
+        "stoploss": -0.06,
+        "bb_squeeze": { "bb_period": 20, "bb_std": 2.0, "squeeze_lookback": 100, "squeeze_pct": 0.20, "vol_window": 20 },
+        "note": "PAPER-RELAXED wide-spread swing name (Phase A: LTC/USD spread ~0.56% > strict 0.5% gate; owner-approved relaxation 2026-10-22). Trades on the THIRD disjoint 1h swing executor whose cost-aware stop (-6%) sits well beyond the ~1.1% round-trip cost. 'eligible' here refers to the STRICT gate only; it is tradeable on the relaxed swing path. EXPERIMENTAL / forward-test only."
+      }
+    },
+    "AVAX/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "executor": "swing",
+      "strategy": "SwingAlt",
+      "strategy_family": "bb_squeeze",
+      "timeframe": "1h",
+      "version": "swing-1h-bbsqueeze-experimental",
+      "eligible": false,
+      "risk": {
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
+        "stoploss": -0.06,
+        "bb_squeeze": { "bb_period": 20, "bb_std": 2.0, "squeeze_lookback": 100, "squeeze_pct": 0.20, "vol_window": 20 },
+        "note": "PAPER-RELAXED wide-spread swing name (Phase A: AVAX/USD spread ~0.64% > strict gate). 1h BB-squeeze breakout on the swing executor, cost-aware -6% stop. EXPERIMENTAL / forward-test only."
+      }
+    },
+    "DOGE/USD": {
+      "status": "EXPERIMENTAL_PAPER",
+      "tradeable": true,
+      "experimental": true,
+      "executor": "swing",
+      "strategy": "SwingAlt",
+      "strategy_family": "rsi_divergence",
+      "timeframe": "1h",
+      "version": "swing-1h-rsidivergence-experimental",
+      "eligible": false,
+      "risk": {
+        "max_stake_usd": 10,
+        "max_planned_loss_usd": 2,
+        "stoploss": -0.06,
+        "rsi_divergence": { "rsi_period": 14, "lookback": 20, "rsi_oversold": 35.0, "rsi_overbought": 70.0 },
+        "note": "PAPER-RELAXED thin-liquidity swing name (Phase A: DOGE/USD thin notional). 1h bullish RSI-divergence + up-close confirmation on the swing executor, cost-aware -6% stop. Meme-coin volatility suits a divergence/mean-reversion swing rather than 5m momentum. EXPERIMENTAL / forward-test only."
       }
     },
     "USDT/USD": {

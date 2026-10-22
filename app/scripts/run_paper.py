@@ -7,7 +7,8 @@ starts `freqtrade trade` against the paper endpoint. Freqtrade does NOT support
 
 Usage:
   python app/scripts/run_paper.py            # DAILY executor: BTC baseline only (1d)
-  python app/scripts/run_paper.py --fast     # FAST executor: experimental alts (5m momentum)
+  python app/scripts/run_paper.py --fast     # FAST executor: live-strict alts (5m dispatcher)
+  python app/scripts/run_paper.py --swing    # SWING executor: relaxed wide-spread alts (1h dispatcher)
   python app/scripts/run_paper.py --check    # connect + load markets only, then exit
 """
 from __future__ import annotations
@@ -25,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FT = ROOT / ".venv" / "Scripts" / "freqtrade.exe"
 CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
 FAST_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.fast.json"
+SWING_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.swing.json"
 USERDIR = ROOT / "app" / "user_data"
 STATE_FILE = ROOT / "app" / "state" / "paper_bot.json"
 HEARTBEAT_SECS = 20
@@ -61,13 +63,19 @@ def _heartbeat_loop(proc: subprocess.Popen, base: dict) -> None:
 def main() -> int:
     global CFG, STATE_FILE
     fast = "--fast" in sys.argv
+    swing = "--swing" in sys.argv
     if fast:
         CFG = FAST_CFG
         STATE_FILE = ROOT / "app" / "state" / "paper_bot_fast.json"
         strategy, bot_name = "MomentumAlt", "unboundbot-alpaca-paper-fast"
+    elif swing:
+        CFG = SWING_CFG
+        STATE_FILE = ROOT / "app" / "state" / "paper_bot_swing.json"
+        strategy, bot_name = "SwingAlt", "unboundbot-alpaca-paper-swing"
     else:
         strategy, bot_name = "PaperAutonomous", "unboundbot-alpaca-paper"
-    print(f"profile={'FAST (5m alts)' if fast else 'DAILY (BTC baseline)'}  strategy={strategy}")
+    profile = "FAST (5m alts)" if fast else ("SWING (1h relaxed alts)" if swing else "DAILY (BTC baseline)")
+    print(f"profile={profile}  strategy={strategy}")
 
     load_env()
     key = os.environ.get("ALPACA_PAPER_API_KEY", "")
@@ -91,7 +99,7 @@ def main() -> int:
         env["FREQTRADE__TELEGRAM__CHAT_ID"] = tg_chat
         print("telegram chat_id loaded from .env")
 
-    logfile = ROOT / (".ft_alpaca_fast.log" if fast else ".ft_alpaca.log")
+    logfile = ROOT / (".ft_alpaca_fast.log" if fast else (".ft_alpaca_swing.log" if swing else ".ft_alpaca.log"))
     if "--check" in sys.argv:
         # Validate markets/data without trading: use show-trades? simplest: list-markets.
         args = [str(FT), "list-markets", "-c", str(CFG), "--userdir", str(USERDIR)]

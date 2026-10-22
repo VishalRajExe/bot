@@ -56,6 +56,7 @@ if hasattr(sys.stdout, "reconfigure"):
 ENV_PATH = ROOT.parent / ".env"
 CFG_PATH = ROOT / "configs" / "config.alpaca.paper.json"
 FAST_CFG_PATH = ROOT / "configs" / "config.alpaca.paper.fast.json"
+SWING_CFG_PATH = ROOT / "configs" / "config.alpaca.paper.swing.json"
 DATA_BASE = "https://data.alpaca.markets"
 TRADER_BASE = "https://paper-api.alpaca.markets"
 STATE_PATH = ROOT / "state" / "crypto_status.json"
@@ -123,7 +124,7 @@ def ft_db_paths() -> dict[str, Path]:
     executor that has not traded yet has no DB). Used to read positions/emit trade
     events across the daily and fast processes together."""
     out: dict[str, Path] = {}
-    for label, cfg in (("daily", CFG_PATH), ("fast", FAST_CFG_PATH)):
+    for label, cfg in (("daily", CFG_PATH), ("fast", FAST_CFG_PATH), ("swing", SWING_CFG_PATH)):
         p = _db_from_cfg(cfg)
         if p and p.exists():
             out[label] = p
@@ -422,7 +423,7 @@ def write_exposure_ledger(dbs: dict[str, Path]) -> dict:
     confirm_trade_entry so the SINGLE portfolio cap is enforced GLOBALLY, not per
     process. Read-only w.r.t. trading: it only records what each executor already
     holds. Includes both known executor names (a missing DB contributes 0)."""
-    execs = {"daily": 0.0, "fast": 0.0}
+    execs = {"daily": 0.0, "fast": 0.0, "swing": 0.0}
     for label, path in dbs.items():
         execs[label] = round(open_stake(path), 2)
     payload = {"executors": execs, "total": round(sum(execs.values()), 2),

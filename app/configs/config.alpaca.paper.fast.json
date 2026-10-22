@@ -4,7 +4,7 @@
   "_sizing_note": "CONSERVATIVE $100 intraday PAPER_AUTONOMOUS sizing (owner directive 2026-10-21, rev2). stake_amount=10 is the per-alt base sized for a $100 balance. NOT STARTED on the $100 preset until the daily path is verified (5m momentum at $100 suffers the most fee/spread drag). MomentumAlt inherits PaperAutonomous.custom_stake_amount + confirm_trade_entry, which enforce: per-alt cap 10, max planned loss 2 (via the -0.03 stop), one position per pair, kill-switch, fresh-equity gate, and the GLOBAL exposure cap computed as this executor's own open stake PLUS the daily executor's contribution read from app/state/open_exposure.json (fail-closed if that ledger is stale). Entries are automatic; unsafe ones are rejected and explained. PAPER ONLY — spot, long-only, no leverage.",
   "trading_mode": "spot",
   "margin_mode": "",
-  "max_open_trades": 3,
+  "max_open_trades": 2,
   "stake_currency": "USD",
   "stake_amount": 10,
   "available_capital": 100,
@@ -15,6 +15,7 @@
   "dataformat_ohlcv": "feather",
   "cancel_open_orders_on_exit": false,
   "strategy": "MomentumAlt",
+  "_strategy_note": "MomentumAlt is a thin 5m binding of FamilyDispatcher; it routes EACH whitelisted pair to its registry strategy_family (momentum_ema_vol for ETH/XRP/DOT/SOL/UNI; link_trend for the improved LINK). The fail-closed veto + bounded sizing are inherited verbatim from PaperAutonomous. The disjoint swing executor (config.alpaca.paper.swing.json) owns LTC/AVAX/DOGE on the 1h SwingAlt dispatcher.",
   "exchange": {
     "name": "alpaca",
     "key": "",
@@ -37,10 +38,15 @@
       "ETH/USD",
       "XRP/USD",
       "DOT/USD",
-      "LINK/USD"
+      "LINK/USD",
+      "SOL/USD",
+      "UNI/USD"
     ],
     "pair_blacklist": [
       "BTC/USD",
+      "LTC/USD",
+      "AVAX/USD",
+      "DOGE/USD",
       "USDT/USD"
     ]
   },

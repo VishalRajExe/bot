@@ -1,6 +1,6 @@
 {
   "_purpose": "Predefined, bounded PAPER_AUTONOMOUS risk policy. The bot executes eligible strategies WITHOUT per-trade or per-coin manual approval, but every entry/exit is validated against these hard limits by the independent risk layer (app/risk/policy.py + PaperAutonomous.confirm_trade_entry). This is autonomous execution inside a policy, not unrestricted trading. PAPER ONLY.",
-  "revised": "2026-10-21 rev3 (CONSERVATIVE $100 PAPER preset; BTC stake raised 10->15 after discovering Alpaca's ~$15 minimum order notional for BTC/USD made a $10 stake non-tradeable; owner approved the broker floor 2026-10-21)",
+  "revised": "2026-10-22 rev4 (MULTI-ASSET expansion, owner-approved plan): structural max_total_open_exposure_usd raised 55->105 = the sum of per-pair max stakes across the now-three disjoint executors (BTC 15 + fast 6x10 + swing 3x10); max_total_exposure_pct_equity stays 0.40 so the RUNTIME cap on a $100 account is min(105, 40) = $40 and still binds hard; a THIRD 'swing' executor (1h, LTC/AVAX/DOGE) added; fast max_open_trades reduced 3->2 so summed max_open_trades (daily 1 + fast 2 + swing 1 = 4) <= max_concurrent_positions 4",
   "authorization": {
     "paper_autonomous": "APPROVED_BY_OWNER (directive 2026-10-21, CONSERVATIVE $100 preset): automatic BUY/SELL/HOLD/EXIT for eligible crypto in Alpaca PAPER without per-trade approval, sized for a $100 balance. Only the DAILY BTC executor is started first; the fast 5m alt executor stays configured but is not run until the $100 path is verified.",
     "live_trading": "NOT APPROVED under any circumstance.",
@@ -22,14 +22,14 @@
     "sizing": "Quantity derived from the actual stop distance where applicable; stake is reduced further if the stop distance would breach max_planned_loss_usd."
   },
   "portfolio": {
-    "max_total_open_exposure_usd": 55,
+    "max_total_open_exposure_usd": 105,
     "max_total_exposure_pct_equity": 0.40,
-    "exposure_rule": "effective cap = min(max_total_open_exposure_usd, max_total_exposure_pct_equity * current_paper_equity). On a $100 account this is min(55, 40) = $40 total open exposure; the $55 structural ceiling only lets validate_executors pass the worst-case whitelist sum (BTC $15 + 4 alts x $10 = $55).",
+    "exposure_rule": "effective cap = min(max_total_open_exposure_usd, max_total_exposure_pct_equity * current_paper_equity). On a $100 account this is min(105, 40) = $40 total open exposure; the $105 STRUCTURAL ceiling only lets validate_executors pass the worst-case whitelist sum (BTC 15 + fast 6x10 + swing 3x10 = 105). At $100 the 40%-equity rule always binds first, so breadth of pairs adds learning surface, NOT more simultaneous dollars at risk.",
     "max_concurrent_positions": 4,
     "max_one_position_per_pair": true,
     "capital_basis": "cash_and_equity",
     "never_use_buying_power": true,
-    "reported_buying_power_note": "On the $100 paper account buying_power is ~$100. It is NOT the bound: the independent $40 (min of $50 fixed / 40%-equity) exposure cap is the real limit."
+    "reported_buying_power_note": "On the $100 paper account buying_power is ~$100. It is NOT the bound: the independent $40 (min of $105 fixed / 40%-equity) exposure cap is the real limit."
   },
   "circuit_breakers": {
     "daily_equity_loss_pct": 0.03,
@@ -54,9 +54,10 @@
     "trade_review": "app/state/trade_review.json"
   },
   "executors": {
-    "note": "Two DISJOINT PAPER order executors are CONFIGURED (CONSERVATIVE $100 preset, owner directive 2026-10-21). 'daily' = BTC baseline only (1d Z-score, stake $10) and is the only executor STARTED first. 'fast' = ETH/XRP/DOT/LINK (5m momentum, $10 each, max 3) stays configured but running=false until the $100 path is verified. Each Freqtrade process only sees its own trade DB, so the read-only monitor writes app/state/open_exposure.json and every confirm_trade_entry adds the OTHER executor's open stake before the exposure-cap check (fail-closed if the ledger is stale) — the $40 (min of $50 / 40%-equity) cap stays global, not per-process. Pair sets are disjoint. Structural worst case = BTC 15 + 4 alts x 10 = 55 <= fixed cap 55; positions 1 + 3 = 4 <= max_concurrent 4; runtime open exposure additionally bounded to ~$40 by the 40%-equity rule. NOTE: BTC stake is 15 (not 10) because Alpaca enforces a ~$15 minimum order notional on BTC/USD, so a $10 stake is silently un-fillable; alt stakes stay at 10 and will be re-based to each venue's true minimum before the fast executor is started.",
+    "note": "Three DISJOINT PAPER order executors are CONFIGURED (multi-asset expansion, owner-approved plan 2026-10-22). 'daily' = BTC baseline only (1d Z-score, stake 15, max 1). 'fast' = LIVE-STRICT alts ETH/XRP/DOT/LINK/SOL/UNI (5m dispatcher, 10 each, max 2 open). 'swing' = PAPER-RELAXED wide-spread names LTC/AVAX/DOGE (1h cost-aware dispatcher, 10 each, max 1 open); its eligibility gate is relaxed per the owner-approved plan (spread > 0.5% / thin) but the cost-aware -6% stop sits well beyond the ~1.1% round-trip cost. Each Freqtrade process only sees its own trade DB, so the read-only monitor writes app/state/open_exposure.json (aggregating ALL THREE) and every confirm_trade_entry adds the OTHER executors' open stake before the exposure-cap check (fail-closed if the ledger is stale) — the $40 (min of $105 / 40%-equity) cap stays global, not per-process. Pair sets are disjoint. Structural worst case = BTC 15 + fast 6x10 + swing 3x10 = 105 <= fixed cap 105; positions 1 + 2 + 1 = 4 <= max_concurrent 4; runtime open exposure additionally bounded to ~$40 by the 40%-equity rule. NOTE: BTC stake is 15 (not 10) because Alpaca enforces a ~$15 minimum order notional on BTC/USD; alt/swing stakes are 10 (all fractionable with tiny base minimums). Only the daily executor is STARTED first; fast and swing stay configured but running=false until the $100 daily path is verified.",
     "daily": { "config": "config.alpaca.paper.json", "strategy": "PaperAutonomous", "timeframe": "1d", "pairs": ["BTC/USD"], "stake_usd": 15, "max_open_trades": 1 },
-    "fast": { "config": "config.alpaca.paper.fast.json", "strategy": "MomentumAlt", "timeframe": "5m", "pairs": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD"], "stake_usd": 10, "max_open_trades": 3, "running": false }
+    "fast": { "config": "config.alpaca.paper.fast.json", "strategy": "MomentumAlt", "timeframe": "5m", "pairs": ["ETH/USD", "XRP/USD", "DOT/USD", "LINK/USD", "SOL/USD", "UNI/USD"], "stake_usd": 10, "max_open_trades": 2, "running": false },
+    "swing": { "config": "config.alpaca.paper.swing.json", "strategy": "SwingAlt", "timeframe": "1h", "pairs": ["LTC/USD", "AVAX/USD", "DOGE/USD"], "stake_usd": 10, "max_open_trades": 1, "running": false }
   },
   "fail_closed": [
     "Unsupported or non-whitelisted symbol.",

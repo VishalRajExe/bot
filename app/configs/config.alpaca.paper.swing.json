@@ -1,0 +1,110 @@
+{
+  "_comment": "UnboundBot — Alpaca PAPER SWING (1h) executor config. This is a THIRD, DISJOINT order process running the 1h SwingAlt dispatcher over the PAPER-RELAXED wide-spread alt names (LTC/AVAX/DOGE) that FAIL the strict 0.5% cost/liquidity gate (owner-approved plan 2026-10-22). Because their ~1.1%+ round-trip cost would swamp a 5m edge, they trade on an hourly swing whose cost-aware -6% stop and multi-% moves are sized to clear that cost. dry_run=false sends REAL orders to the paper endpoint. It NEVER trades BTC or the fast-executor alts — those stay on their own disjoint configs. Do NOT run until the owner approves paper order flow.",
+  "_warning": "If the ccxt url override ever fails, orders could target live. Verify the resolved endpoint with check_alpaca.py before trading. Rotate the exposed keys. This process shares the GLOBAL risk policy (paper_risk_policy.json), kill-switch, equity snapshot and the cross-executor open_exposure ledger with the daily and fast bots — the three whitelists are disjoint so the worst-case global exposure (BTC 15 + fast 6x10 + swing 3x10) stays under the min(105, 40%-equity) = $40 cap at $100. NOT started until the $100 daily path is verified.",
+  "_sizing_note": "PAPER-RELAXED swing sizing (owner-approved plan 2026-10-22). stake_amount=10 is the per-pair base sized for a $100 balance; each of LTC/AVAX/DOGE is fractionable with a tiny base minimum so $10 clears the venue floor. SwingAlt inherits PaperAutonomous.custom_stake_amount + confirm_trade_entry, which enforce: per-pair cap 10, max planned loss 2, one position per pair, kill-switch, fresh-equity gate, and the GLOBAL exposure cap computed as this executor's own open stake PLUS the daily and fast executors' contributions read from app/state/open_exposure.json (fail-closed if that ledger is stale). Entries are automatic; unsafe ones are rejected and explained. PAPER ONLY — spot, long-only, no leverage.",
+  "trading_mode": "spot",
+  "margin_mode": "",
+  "max_open_trades": 1,
+  "stake_currency": "USD",
+  "stake_amount": 10,
+  "available_capital": 100,
+  "tradable_balance_ratio": 0.99,
+  "dry_run": false,
+  "db_url": "sqlite:///D:/BOT/tradesv3_swing.sqlite",
+  "timeframe": "1h",
+  "dataformat_ohlcv": "feather",
+  "cancel_open_orders_on_exit": false,
+  "strategy": "SwingAlt",
+  "exchange": {
+    "name": "alpaca",
+    "key": "",
+    "secret": "",
+    "_secrets_note": "Keys are injected at runtime from D:\\BOT\\.env via FREQTRADE__EXCHANGE__KEY/SECRET by app/scripts/run_paper.py --swing. Never hardcode here (this file is committed).",
+    "_ft_has_note": "Alpaca is not a Freqtrade-native exchange; its ccxt fetch_ohlcv returns ONLY the current partial bar without a 'since' timestamp. ohlcv_require_since=true forces the historic-fetch path so the full 1h history needed for BB(20)/squeeze-quantile(100)/EMA55/ADX warm-up is returned.",
+    "_ft_has_params": {
+      "ohlcv_require_since": true
+    },
+    "ccxt_config": {
+      "urls": {
+        "api": {
+          "trader": "https://paper-api.alpaca.markets",
+          "market": "https://data.alpaca.markets"
+        }
+      }
+    },
+    "ccxt_async_config": {},
+    "pair_whitelist": [
+      "LTC/USD",
+      "AVAX/USD",
+      "DOGE/USD"
+    ],
+    "pair_blacklist": [
+      "BTC/USD",
+      "ETH/USD",
+      "XRP/USD",
+      "DOT/USD",
+      "LINK/USD",
+      "SOL/USD",
+      "UNI/USD",
+      "USDT/USD"
+    ]
+  },
+  "pairlists": [
+    {
+      "method": "StaticPairList"
+    }
+  ],
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": false,
+    "price_last_balance": 0.0
+  },
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": false
+  },
+  "order_types": {
+    "entry": "market",
+    "exit": "market",
+    "emergency_exit": "market",
+    "stoploss": "market",
+    "stoploss_on_exchange": false
+  },
+  "unfilledtimeout": {
+    "entry": 10,
+    "exit": 10,
+    "unit": "minutes"
+  },
+  "telegram": {
+    "enabled": false,
+    "_note": "Disabled to avoid the Telegram getUpdates Conflict with the daily bot (only one instance may poll a token). The read-only crypto_status_monitor sends this executor's 🟢/✅/🔴 trade alerts and per-asset status via sendMessage (it reads ALL THREE trade DBs), so the owner is still notified of every swing trade without a third polling bot.",
+    "token": "",
+    "chat_id": "",
+    "xrate": 0.4,
+    "notification_types": [
+      "status",
+      "warning",
+      "startup_flags",
+      "strategy_msg",
+      "whitelist",
+      "entry",
+      "enter",
+      "enter_cancel",
+      "filled",
+      "cancel",
+      "exit",
+      "exit_cancel",
+      "protection",
+      "profit"
+    ],
+    "update_last_command_output": true,
+    "status_notify_empty": true
+  },
+  "bot_name": "unboundbot-alpaca-paper-swing",
+  "initial_state": "running",
+  "force_entry_enable": false,
+  "_force_entry_note": "Owner may enable force_entry + a localhost api_server to run a CONTROLLED test trade through the veto layer. Left OFF by default: forced entries are a testing affordance, not part of autonomous operation.",
+  "internals": {
+    "process_throttle_secs": 20
+  }
+}

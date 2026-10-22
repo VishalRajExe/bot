@@ -24,8 +24,8 @@ def test_tradeable_vs_status_only_sets():
 
 
 def test_exposure_cap_is_lower_of_fixed_and_pct_equity():
-    assert policy.exposure_cap_usd(100000) == 55.0                # fixed 55 binds (40% of 100k = 40k)
-    assert policy.exposure_cap_usd(200) == 55.0                   # fixed 55 binds (40% of 200 = 80)
+    assert policy.exposure_cap_usd(100000) == 105.0               # fixed 105 binds (40% of 100k = 40k)
+    assert policy.exposure_cap_usd(300) == 105.0                  # fixed 105 binds (40% of 300 = 120)
     assert policy.exposure_cap_usd(100) == 40.0                   # 40%-equity binds on a $100 account
 
 
@@ -35,8 +35,8 @@ def test_exposure_cap_fail_closed_when_equity_unknown():
 
 
 def test_would_breach_exposure_math():
-    assert policy.would_breach_exposure(50, 10, 100000) is True       # 60 > cap 55
-    assert policy.would_breach_exposure(40, 10, 100000) is False      # 50 <= cap 55
+    assert policy.would_breach_exposure(100, 10, 100000) is True      # 110 > cap 105
+    assert policy.would_breach_exposure(90, 10, 100000) is False      # 100 <= cap 105
 
 
 def test_breaker_daily_loss_and_drawdown():
@@ -74,13 +74,16 @@ def test_real_config_validates_clean():
     cfgs = Path(__file__).resolve().parents[1] / "configs"
     daily = json.loads((cfgs / "config.alpaca.paper.json").read_text(encoding="utf-8"))
     fast = json.loads((cfgs / "config.alpaca.paper.fast.json").read_text(encoding="utf-8"))
+    swing = json.loads((cfgs / "config.alpaca.paper.swing.json").read_text(encoding="utf-8"))
     assert policy.validate_policy(policy.policy()) == []
     assert policy.validate_registry(policy.registry()) == []
     # Each executor covers only PART of the tradeable set, so require_full_coverage=False.
     assert policy.validate_config(daily, require_full_coverage=False) == []
     assert policy.validate_config(fast, require_full_coverage=False) == []
-    # The GLOBAL invariants (disjoint, full coverage, combined exposure/positions) hold.
-    assert policy.validate_executors({"daily": daily, "fast": fast}) == []
+    assert policy.validate_config(swing, require_full_coverage=False) == []
+    # The GLOBAL invariants (disjoint, full coverage, combined exposure/positions) hold
+    # across all THREE executors (daily BTC + fast 5m alts + swing 1h relaxed alts).
+    assert policy.validate_executors({"daily": daily, "fast": fast, "swing": swing}) == []
 
 
 def test_executors_must_be_disjoint_and_cover_all():

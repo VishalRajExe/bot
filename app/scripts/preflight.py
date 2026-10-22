@@ -24,6 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PAPER_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
 FAST_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.fast.json"
+SWING_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.swing.json"
 RISK_APPROVAL = ROOT / "app" / "configs" / "risk_approval.json"
 sys.path.insert(0, str(ROOT / "app"))
 from risk import policy as rp  # noqa: E402  independent paper-risk layer
@@ -143,12 +144,16 @@ def load_strategy_meta(strategy: str = "PaperAutonomous") -> dict:
         meta["startup_candle_count"] = getattr(S, "startup_candle_count", None)
         meta["risk_executor"] = getattr(S, "RISK_EXECUTOR", None)
         # Momentum family: no daily Z thresholds; validate EMA/volume windows instead.
-        if getattr(S, "timeframe", None) == "5m" and hasattr(S, "_momentum_params"):
+        # The 5m/1h FamilyDispatcher subclasses (MomentumAlt/SwingAlt) carry no
+        # bull/exit Z thresholds — they route each pair to a family in app/indicators/
+        # families.py — so they must NOT be blocked for lacking them. Detect a dispatcher
+        # by its non-daily RISK_EXECUTOR id (fast/swing) rather than the removed
+        # _momentum_params attribute.
+        if getattr(S, "RISK_EXECUTOR", None) in ("fast", "swing"):
             meta["uses_z_thresholds"] = False
             meta["momentum_windows"] = {
-                "ema_fast": getattr(S, "_EMA_FAST_DEFAULT", None),
-                "ema_slow": getattr(S, "_EMA_SLOW_DEFAULT", None),
-                "vol_window": getattr(S, "_VOL_WINDOW_DEFAULT", None),
+                "default_family": getattr(S, "DEFAULT_FAMILY", None),
+                "timeframe": getattr(S, "timeframe", None),
             }
         prot = S.protections
         try:
@@ -194,7 +199,7 @@ def audit_risk_layer(configs: dict[str, dict]) -> list[dict]:
         layout = "; ".join(f"{name}={cfg.get('exchange', {}).get('pair_whitelist', [])}"
                            for name, cfg in configs.items())
         out.append({"level": "OK", "code": "AUTONOMOUS_PAPER_POLICY",
-                    "message": f"bounded policy active across BOTH executors: GLOBAL exposure<={cap} USD, "
+                    "message": f"bounded policy active across ALL THREE executors: GLOBAL exposure<={cap} USD, "
                                f"<={mot} positions total, disjoint pairs [{layout}]"})
         out.append({"level": "OK", "code": "TRADEABLE_SET",
                     "message": "tradeable: " + ", ".join(rp.tradeable_pairs()) +
@@ -211,8 +216,9 @@ def main() -> int:
     configs = {
         "daily": json.loads(PAPER_CFG.read_text(encoding="utf-8")),
         "fast": json.loads(FAST_CFG.read_text(encoding="utf-8")),
+        "swing": json.loads(SWING_CFG.read_text(encoding="utf-8")),
     }
-    strategies = {"daily": "PaperAutonomous", "fast": "MomentumAlt"}
+    strategies = {"daily": "PaperAutonomous", "fast": "MomentumAlt", "swing": "SwingAlt"}
     findings: list[dict] = []
     ready = True
     metas: dict[str, dict] = {}
@@ -228,7 +234,7 @@ def main() -> int:
         ready = False
 
     print(f"Preflight — {len(configs)} executors "
-          f"(daily={PAPER_CFG.name}, fast={FAST_CFG.name})")
+          f"(daily={PAPER_CFG.name}, fast={FAST_CFG.name}, swing={SWING_CFG.name})")
     for name, meta in metas.items():
         print(f"  {name} strategy_meta={meta}")
     for x in findings:

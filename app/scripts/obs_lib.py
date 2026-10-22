@@ -22,19 +22,22 @@ import requests
 ROOT = Path(__file__).resolve().parents[2]
 PAPER_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.json"
 FAST_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.fast.json"
+SWING_CFG = ROOT / "app" / "configs" / "config.alpaca.paper.swing.json"
 LEDGER_DB = ROOT / "app" / "ledger" / "unbound.db"
 # Heartbeat/PID file maintained by run_paper.py while the paper bot lives.
 STATE_FILE = ROOT / "app" / "state" / "paper_bot.json"
 FAST_STATE_FILE = ROOT / "app" / "state" / "paper_bot_fast.json"
+SWING_STATE_FILE = ROOT / "app" / "state" / "paper_bot_swing.json"
 ALPACA_FEATHER = ROOT / "app" / "user_data" / "data" / "alpaca" / "BTC_USD-1d.feather"
 
 
 def executors() -> list[dict]:
-    """The two disjoint PAPER order executors and their read-only sources. Each has
+    """The three disjoint PAPER order executors and their read-only sources. Each has
     its OWN trade DB + heartbeat file; observation aggregates across all of them."""
     return [
         {"name": "daily", "cfg": PAPER_CFG, "state": STATE_FILE},
         {"name": "fast", "cfg": FAST_CFG, "state": FAST_STATE_FILE},
+        {"name": "swing", "cfg": SWING_CFG, "state": SWING_STATE_FILE},
     ]
 
 
