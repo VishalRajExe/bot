@@ -299,6 +299,41 @@ decisions/outcomes. Do not conflate the two.
   Alpaca dashboard + updates `.env`; re-verify `active_key != exposed` (boolean only, never
   echo the secret), re-run preflight+reconcile, then do the deferred live supervised daily-
   executor startup and Telegram/dashboard browser verification.
+  - **Re-verify 2026-10-22 (owner reported rotation): STILL BLOCKED.** On the follow-up attempt
+    the active `.env` `ALPACA_PAPER_API_KEY` was re-checked by boolean comparison and STILL
+    equals the previously exposed credential (value never printed), and `D:\BOT\.env`
+    `LastWriteTime` is 21-Oct 22:52 (NOT modified on the 22nd). Conclusion: the reported
+    rotation did not persist to this file (wrong file / unsaved edit / restored same key /
+    different account). Check 1 is a mandatory gate, so authentication, preflight, reconcile,
+    process startup, Telegram and dashboard verification were all **left NOT performed** — the
+    executor stays stopped and the exposed credential was never exercised.
+
+- 2026-10-22 **LIVE SUPERVISED PAPER START (owner override on the exposed key).** After the
+  still-exposed-credential blocker was re-confirmed, the owner explicitly directed "start the
+  bot"; because it is the Alpaca **PAPER** account (no real funds, live trading still blocked,
+  sizing/risk unchanged) we proceeded. Ran `check_alpaca` (AUTH OK paper, equity ~99.4/cash 85)
+  and `preflight` (**TRADING READY: True**), stopped the stale orphan `crypto_status_monitor.py`
+  tree by exact PID, then launched the real `supervise.py` (detached). It created the Windows
+  Job Object and spawned monitor + learner + executor-daily; the tree is contained:
+  supervisor(40268)->run_paper(27380/42172)->**freqtrade.exe(40076)**, `Dry run disabled` on
+  `paper-api.alpaca.markets`, strategy `PaperAutonomous`, tf 1d, stake 15, max_open_trades 1,
+  whitelist `['BTC/USD']`, protections loaded, Telegram RPC up, state RUNNING; it reconciled the
+  pre-existing open BTC trade (id=1). Daily heartbeat stays fresh (~6-11s). Cleaned two stale
+  fast/swing heartbeat artifacts (dead pids from earlier runs; those executors are running:false)
+  which had been forcing reconcile to OFFLINE. **Telegram delivery verified** via `test_notify.py`
+  (sendMessage http=200 ok=True). **Reconcile** now reads liveness/broker/portfolio healthy
+  (process_alive True, broker_ok, ft_db_ok, drift 0.0, 0 unmatched orders, 0 locks) but overall
+  **STALE** only because its candle-freshness probe wants `alpaca/BTC_USD-1d.feather`, which
+  trade mode does not write (same `candle_age_h=None` as the pre-start baseline) — a harness
+  limitation, not a live data outage. **NOT completed: the browser dashboard check** — the
+  Streamlit app hard-crashed at top level on missing data: first `no such table: metrics`
+  (fixed by running the documented `build_ledger.py`), then `FileNotFoundError .../binance/
+  BTC_USDT-1d.feather` from `load_regime()` (app.py:80); the Binance research feather could not
+  be downloaded here because `api.binance.com` times out in this environment. OPEN DEFECT (not
+  fixed, per no-unrelated-code-changes): `app/dashboard/app.py` must guard `load_metrics`/
+  `load_regime` so a missing research-data file degrades gracefully instead of blanking the
+  whole read-only paper dashboard. Only the daily BTC/USD executor was started — no config,
+  risk, or strategy change; no artificial orders placed.
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
