@@ -1,51 +1,40 @@
-﻿"""UnboundBot â€” experimental intraday momentum strategy for the alt pairs (fast executor).
+﻿"""UnboundBot — experimental intraday executor for the LIVE-STRICT alt pairs (fast bot).
 
-Owner directive 2026-10-21: the experimental alts (ETH/XRP/DOT/LINK) should buy/sell
-*fast* and *strategically*. This runs a SECOND, DISJOINT order process on a 5-minute
-candle so decisions form up to every 5 minutes instead of once per day, while the BTC
-baseline stays untouched on the 1d daily executor.
+Owner directive 2026-10-21: the experimental alts should buy/sell *fast* and
+*strategically* on a SEPARATE, DISJOINT order process from the BTC daily baseline, so
+decisions form up to every 5 minutes instead of once per day. BTC's baseline stays
+untouched on the 1d daily executor.
 
-It subclasses PaperAutonomous ONLY to reuse the independent, fail-closed risk layer
-verbatim â€” ``custom_stake_amount`` (bounded per-alt sizing) and ``confirm_trade_entry``
-(short reject, tradeable check, kill switch, per-position cap, fresh-equity gate, and
-the GLOBAL exposure cap that also counts the daily executor's open stake via the
-cross-executor ledger). The signal logic is fully overridden; nothing here changes BTC.
+As of the multi-strategy expansion this class is a thin 5m binding of the shared
+``FamilyDispatcher``: it inherits the independent, fail-closed risk layer verbatim from
+PaperAutonomous (``custom_stake_amount`` + ``confirm_trade_entry``) and routes EACH pair
+to its assigned ``strategy_family`` (momentum_ema_vol by default; a pair may be assigned
+link_trend, rsi_divergence, or bb_squeeze in app/configs/strategy_registry.json). The
+signal math lives in app/indicators/families.py; nothing here changes BTC.
 
-Signal (documented as EXPERIMENTAL, not profit-proven):
+Default family signal (documented as EXPERIMENTAL, not profit-proven):
   * BUY  on a *fresh* cross of the fast EMA above the slow EMA, confirmed by a volume
           surge (current volume above its rolling mean) on a completed 5m candle.
   * EXIT on a fresh cross of the fast EMA back below the slow EMA, or the -3% stop.
 
-Fresh-cross (not "already above") is deliberate: it prevents duplicate/chasing entries
-the same way the daily baseline does. Spot, long-only, unleveraged, PAPER ONLY.
+Fresh-cross (not "already above") prevents duplicate/chasing entries the same way the
+daily baseline does. Spot, long-only, unleveraged, PAPER ONLY.
 """
 from __future__ import annotations
 
-from datetime import datetime  # noqa: F401
-
-import pandas as pd  # noqa: F401
-import talib
-
-# Importing PaperAutonomous first installs the app/ path onto sys.path (it does that at
-# module load), so the shared risk layer is importable here too. We reuse its veto via
-# the base class; `policy` is referenced directly (module global), matching the base.
-from PaperAutonomous import PaperAutonomous  # noqa: E402
-from risk import policy  # noqa: E402
+from FamilyDispatcher import FamilyDispatcher  # noqa: E402
 
 
-class MomentumAlt(PaperAutonomous):
+class MomentumAlt(FamilyDispatcher):
     INTERFACE_VERSION = 3
     timeframe = "5m"               # intraday cadence; BTC's daily bot is a separate process
     can_short = False              # spot, long-only
-    RISK_EXECUTOR = "fast"         # account for the daily executor's stake in the global cap
+    RISK_EXECUTOR = "fast"         # account for the daily/swing executors' stake in the global cap
+    DEFAULT_FAMILY = "momentum_ema_vol"
 
-    # Momentum parameters (defaults; overridden per-pair from strategy_registry.json).
-    _EMA_FAST_DEFAULT = 9
-    _EMA_SLOW_DEFAULT = 21
-    _VOL_WINDOW_DEFAULT = 20
-
-    # Tighter intraday stop than the daily baseline; combined with the 1000 stake this
-    # bounds planned loss to ~30 USD, well under the 500 max_planned_loss_usd cap.
+    # Tight intraday stop; combined with the bounded per-alt stake this keeps the planned
+    # loss well under the per-pair max_planned_loss_usd cap. Per-pair stoploss overrides
+    # live in the registry and are enforced by the sizing layer (max_loss / stop).
     stoploss = -0.03
     trailing_stop = False
     minimal_roi = {"0": 1.0}       # disabled; exits are signal/stop driven
@@ -53,7 +42,8 @@ class MomentumAlt(PaperAutonomous):
     exit_profit_only = False
     ignore_roi_if_entry_signal = False
     process_only_new_candles = True
-    # ~16h of 5m history â€” converges EMA21 + vol-MA20 well within warm-up.
+    # ~16h of 5m history — converges EMA21 + vol-MA20 (and the 55/100-window families)
+    # well within warm-up.
     startup_candle_count = 200
 
     @property
@@ -76,52 +66,3 @@ class MomentumAlt(PaperAutonomous):
                 "only_per_pair": True,
             },
         ]
-
-    def _momentum_params(self, pair: str) -> tuple[int, int, int]:
-        m = policy.pair_entry(pair).get("risk", {}).get("momentum", {})
-        return (int(m.get("ema_fast", self._EMA_FAST_DEFAULT)),
-                int(m.get("ema_slow", self._EMA_SLOW_DEFAULT)),
-                int(m.get("vol_window", self._VOL_WINDOW_DEFAULT)))
-
-    # ---- signals -------------------------------------------------------------
-    def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        fast_p, slow_p, vol_p = self._momentum_params(metadata["pair"])
-        dataframe["ema_fast"] = talib.EMA(dataframe["close"], timeperiod=fast_p)
-        dataframe["ema_slow"] = talib.EMA(dataframe["close"], timeperiod=slow_p)
-        dataframe["vol_ma"] = dataframe["volume"].rolling(window=vol_p).mean()
-        return dataframe
-
-    def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        pair = metadata["pair"]
-        # Only the fast-executor's experimental alts trade here; anything else (BTC,
-        # status-only, unknown) emits NO entry â€” and confirm_trade_entry still vetoes.
-        if not policy.is_tradeable(pair) or self._is_baseline(pair):
-            dataframe["enter_long"] = 0
-            return dataframe
-        fast_p, slow_p, _ = self._momentum_params(pair)
-        f, s = dataframe["ema_fast"], dataframe["ema_slow"]
-        prev_f, prev_s = f.shift(1), s.shift(1)
-        vol_surge = dataframe["volume"] > dataframe["vol_ma"]
-        cross_up = (f > s) & (prev_f <= prev_s) & vol_surge & (dataframe["volume"] > 0)
-        cross_up = cross_up.fillna(False)
-        dataframe.loc[cross_up, "enter_long"] = 1
-        if cross_up.any():
-            dataframe.loc[cross_up, "enter_tag"] = (
-                f"EXPERIMENTAL mom ema{fast_p}x{slow_p} cross-up + vol surge"
-            )
-        return dataframe
-
-    def populate_exit_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        pair = metadata["pair"]
-        if not policy.is_tradeable(pair) or self._is_baseline(pair):
-            dataframe["exit_long"] = 0
-            return dataframe
-        fast_p, slow_p, _ = self._momentum_params(pair)
-        f, s = dataframe["ema_fast"], dataframe["ema_slow"]
-        prev_f, prev_s = f.shift(1), s.shift(1)
-        cross_dn = (f < s) & (prev_f >= prev_s)
-        cross_dn = cross_dn.fillna(False)
-        dataframe.loc[cross_dn, "exit_long"] = 1
-        if cross_dn.any():
-            dataframe.loc[cross_dn, "exit_tag"] = f"EXPERIMENTAL mom ema{fast_p}x{slow_p} cross-down"
-        return dataframe
