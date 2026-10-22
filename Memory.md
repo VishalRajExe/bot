@@ -278,6 +278,27 @@ decisions/outcomes. Do not conflate the two.
   unit) — never the production supervisor, no orders, no network; Test B force-kills a harness
   supervisor and proves the OS reaps child+grandchild. **199 passed** (187 + 12). Graceful =
   Ctrl+C→drain; forced = any kill → job-close tears down the tree.
+- 2026-10-22 **SUPERVISED-STARTUP READINESS CHECK → HELD ON KEY ROTATION.** Pre-start
+  verification at HEAD `4b59aac` (clean tree, in sync with `origin/main`): process tree had
+  NO supervisor/executor/learner running, only 1 orphaned read-only `crypto_status_monitor.py`
+  tree (PIDs 32352→31872, parent 37020 dead) left untouched pending owner decision; the
+  `D:\freebuffxanti … -m unibot` processes are a DIFFERENT project and were excluded (matched
+  only by a case-insensitive 'BOT' filter). Safety gates all GREEN: `preflight.py` →
+  **TRADING READY: True** (exit 0; paper endpoint, spot/long-only/unleveraged, bounded stake
+  15, 3 protections, disjoint executors, global $40 runtime cap); `check_alpaca.py` → **AUTH OK**
+  on paper (cash 85 / equity 99.37, crypto ACTIVE, BTC tradable); baseline `reconcile.py` →
+  **OFFLINE** (correct pre-start; the 1 open BTC position reconciles, drift 0.0, 0 unmatched
+  orders, 0 locks). **BLOCKER:** the §2 requirement to confirm the active Alpaca key is NOT the
+  previously exposed credential FAILED — the live `D:\BOT\.env` `ALPACA_PAPER_API_KEY` is
+  byte-for-byte the value exposed in an earlier chat (the exposed key ID is deliberately NOT
+  reproduced in these tracked docs); the
+  rotation logged as an open owner-action was never done. Because that check is a hard
+  prerequisite, the executor was NOT started (owner elected to rotate first). Job Object
+  containment remains proven only by the isolated dummy-process tests (`test_win_job.py`),
+  NOT yet by a live production supervisor start. NEXT: owner rotates the paper key in the
+  Alpaca dashboard + updates `.env`; re-verify `active_key != exposed` (boolean only, never
+  echo the secret), re-run preflight+reconcile, then do the deferred live supervised daily-
+  executor startup and Telegram/dashboard browser verification.
 
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
