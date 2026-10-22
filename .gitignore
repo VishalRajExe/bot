@@ -57,3 +57,6 @@ freqtrade-stable/
 phases_doc_checkboxes.png
 phases_register_table.png
 prd_root_path.png
+
+# --- Supervisor runtime output (started by app/scripts/supervise.py via Start-Process redirect) ---
+logs/

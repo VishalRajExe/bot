@@ -1,8 +1,19 @@
 # UnboundBot
 
 **PAPER-only** crypto trading system layered on top of an unmodified Freqtrade
-checkout. Multi-asset, multi-strategy, self-learning — every order runs through
-an independent fail-closed risk veto; nothing here trades real money.
+checkout. Multi-asset, multi-strategy, **expectancy-gated** — every order runs
+through an independent fail-closed risk veto; nothing here trades real money.
+
+> **What this system is *not*.** No machine learning. No dashboard (Telegram is
+> the only ops surface, and the Streamlit "Regime Trader" UI in
+> [`docs/Design.md`](docs/Design.md) is spec-only, unimplemented). No continuous
+> market auto-discovery (an operator runs `discover_assets.py` by hand to
+> expand the whitelist). No backtest-to-live feedback loop (backtest CSVs are
+> static artifacts a human reviews). No model training. "Expectancy-gated"
+> below means: after ≥ 20 closed trades, a family/pair whose average
+> R-multiple has fallen to ≤ 0 is automatically blocked from new entries. The
+> gate is one-way — the system can demote but never self-promote; only an
+> owner edit re-enables a pair.
 
 > **Objective (honest, reframed 2026-10-22).** Maximize *risk-adjusted expectancy*
 > (after fees + spread) under hard safety caps, and keep learning continuously.
@@ -169,6 +180,30 @@ python app\scripts\run_backtest.py --strategy ResearchFamily --pairs BTC/USDT ET
 The matrix writes `docs\Backtest_Results_<date>.csv` + `.md` with per-cell
 expectancy so the registry can be re-tagged based on evidence.
 
+## What "learning" actually does here
+
+The `learner.py` process is **not** a model-training loop. It does exactly
+three things, in order, every 15 minutes:
+
+1. Read `paper_trades` from all three Freqtrade trade DBs, filter to
+   `is_open = 0`, compute the R-multiple per closed trade,
+   and upsert rows into `app/ledger/unbound.db::trade_journal`.
+2. Group those closed trades by `(pair, family)`, compute `n`, `expectancy_R`,
+   `win_rate`, `avg_R`. Write the whole map into `app/state/perf.json`.
+3. For every `(pair, family)` with `n ≥ 20` **and** `expectancy_R ≤ 0`, append
+   an entry to `app/state/strategy_gate.json`. Never remove an entry.
+
+The `policy.evidence_multiplier()` sizing hook reads `perf.json` and scales a
+pair's stake up (never down, never past `MAX_EVIDENCE_SCALE = 2.0`) once that
+pair has proven positive expectancy. `policy.is_tradeable(pair)` returns False
+while the pair is in `strategy_gate.json`.
+
+On a **young account** with zero closed trades — which is exactly the state
+right now — the entire layer is deliberately inert: `by_pair_family={}`,
+`demoted=[]`, every `evidence_multiplier(pair)=1.0`, and the sizing / gating
+behavior is byte-for-byte identical to the pre-expansion BTC-only baseline.
+The pipeline exists so it can start producing signal *after* trades close.
+
 ## Testing
 
 ```powershell
@@ -209,7 +244,7 @@ the 20%-equity per-position guard.
 - [`docs/Architecture.md`](docs/Architecture.md) — architecture + implementation addendum.
 - [`docs/Phases.md`](docs/Phases.md) — original phase-by-phase approval checklist.
 - [`docs/Audit_Remediation_2026-10-21.md`](docs/Audit_Remediation_2026-10-21.md) — pre-expansion single-executor audit.
-- [`docs/Audit_2026-10-22.md`](docs/Audit_2026-10-22.md) — **current authoritative state** after the multi-asset / self-learning expansion.
+- [`docs/Audit_2026-10-22.md`](docs/Audit_2026-10-22.md) — **current authoritative state** after the multi-asset / expectancy-gated expansion (includes the open swing-OHLCV defect).
 - [`docs/Asset_Universe_Classification.md`](docs/Asset_Universe_Classification.md) — Phase A verified asset list.
 - [`docs/Backtest_Results_2026-10-22.md`](docs/Backtest_Results_2026-10-22.md) — Phase C matrix results.
 - [`docs/Strategy_FVG_OB.md`](docs/Strategy_FVG_OB.md) — research-only FVG/OB sequence (never wired to trading).
