@@ -42,6 +42,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from notifications.format import (  # noqa: E402
     format_asset_status,
+    format_demote,
     format_risk_rejection,
     format_trade_entry,
     format_trade_exit,
@@ -61,6 +62,7 @@ DATA_BASE = "https://data.alpaca.markets"
 TRADER_BASE = "https://paper-api.alpaca.markets"
 STATE_PATH = ROOT / "state" / "crypto_status.json"
 TRADE_EVENTS_PATH = ROOT / "state" / "trade_events.json"
+DEMOTE_EVENTS_PATH = ROOT / "state" / "demote_events.json"
 TIMEFRAME = "1d"
 EMA_PERIOD = 65
 STD_PERIOD = 65
@@ -402,6 +404,37 @@ def sweep(env: dict, hdrs: dict, pairs: list[str], notify_mode: str) -> int:
                        "asof": datetime.now(timezone.utc).isoformat()}
     policy.write_json(STATE_PATH, state)
     sent += notify_trade_events(env, dbs)
+    sent += notify_demotions(env)
+    return sent
+
+
+def notify_demotions(env: dict) -> int:
+    """⛔ surface every NEW entry in app/state/strategy_gate.json since the last
+    watermark (app/state/demote_events.json). The learner writes the gate file, the
+    monitor ONLY reads it and pushes a Telegram message — no order side-effects and
+    no auto-promote (an owner must delete the entry to re-enable the pair). This is
+    the Phase F notification hook for the Phase D strategy gate."""
+    gate = policy.read_json(policy.strategy_gate_path())
+    current = gate.get("demoted") or []
+    prev = policy.read_json(DEMOTE_EVENTS_PATH)
+    seen_keys = set(map(tuple, prev.get("seen", [])))
+    first_run = not prev.get("initialized")
+    sent = 0
+    new: list[tuple] = []
+    for ev in current:
+        k = (ev.get("pair"), ev.get("family"), ev.get("since"))
+        if first_run or k in seen_keys:
+            seen_keys.add(k)  # seed on first run without spamming history
+            continue
+        if send(env, format_demote(ev)):
+            sent += 1
+        seen_keys.add(k)
+        new.append(k)
+    policy.write_json(DEMOTE_EVENTS_PATH, {
+        "initialized": True,
+        "seen": sorted(list(seen_keys)),
+        "asof": datetime.now(timezone.utc).isoformat(),
+    })
     return sent
 
 

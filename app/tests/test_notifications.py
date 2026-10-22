@@ -94,3 +94,26 @@ def test_status_only_asset_shows_monitor_and_not_traded():
     assert "USDT/USD" in msg
     assert "STATUS-ONLY" in msg
     assert "NOT TRADED" in msg
+
+
+def test_format_demote_reports_pair_family_expectancy_and_no_auto_promote():
+    """Phase F notification hook for the Phase D strategy gate. Must state clearly
+    that this is an AUTO-demotion (never auto-promote) and include the numbers the
+    owner needs to decide on a re-approval."""
+    ev = {"pair": "DOGE/USD", "family": "rsi_divergence",
+          "since": "2026-10-22T10:00:00Z", "expectancy_R": -0.42, "n": 25,
+          "reason": "expectancy_R=-0.42 <= 0 at n=25"}
+    msg = NF.format_demote(ev)
+    assert "DOGE/USD" in msg
+    assert "rsi_divergence" in msg
+    assert "AUTO-DEMOTED" in msg
+    assert "-0.4200" in msg
+    assert "n=25" in msg
+    # the message must make the no-auto-promote rule impossible to miss
+    assert "NOT auto-promoted" in msg
+
+
+def test_format_demote_handles_missing_fields_without_crashing():
+    msg = NF.format_demote({"pair": "X/USD"})
+    assert "X/USD" in msg
+    assert "n/a" in msg

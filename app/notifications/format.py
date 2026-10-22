@@ -181,6 +181,25 @@ def format_risk_rejection(rej: dict[str, Any]) -> str:
     ])
 
 
+def format_demote(event: dict[str, Any]) -> str:
+    """⛔ STRATEGY GATE — a pair/family auto-demoted by the Phase D learner.
+
+    Emitted when app/state/strategy_gate.json gains a new entry (n>=N_MIN closed
+    trades with a non-positive after-fee expectancy). Auto-PROMOTE is intentionally
+    not supported: the owner must delete the entry (after a fresh backtest) to
+    re-enable a pair, so the gate cannot flap on a lucky / unlucky streak."""
+    lines = [
+        f"⛔ STRATEGY GATE — AUTO-DEMOTED: {event.get('pair', '?')} "
+        f"[{event.get('family') or 'n/a'}]",
+        f"⏱️ {_fmt_ts(event.get('since'))}",
+        f"📉 expectancy_R: {_num(event.get('expectancy_R'), 4)} at n={event.get('n', 'n/a')}",
+        f"💡 reason: {event.get('reason', 'non-positive after-fee expectancy')}",
+        "🚫 new entries for this pair are blocked by policy.is_tradeable.",
+        "🔁 NOT auto-promoted: owner must re-approve via a fresh backtest + edit the gate file.",
+    ]
+    return "\n".join(lines)
+
+
 
 def format_asset_status(asset: dict[str, Any]) -> str:
     """Rich, per-crypto status snapshot. One message per asset (owner brief §9).
