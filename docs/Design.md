@@ -4,6 +4,17 @@
 **Product:** UnboundBot  
 **Design status:** Approved documentation direction; no dashboard implemented. Based on the user's three Regime Trader screenshots, adapted for BTC/USD crypto spot trading. Progress and acceptance evidence belong in [Phases.md](Phases.md) (`P9-01` through `P9-15`), not a separate UI progress list.
 
+> **Backend scope note (2026-10-22).** This file describes the *dashboard UI*
+> only. Since it was written, the backend has grown from a single BTC executor
+> to three disjoint order executors (daily / fast / swing) plus a Phase D
+> learning layer and a Phase F supervisor. Read the current backend state in
+> [Audit_2026-10-22.md](Audit_2026-10-22.md) and
+> [Architecture.md §9](Architecture.md#9-implementation-addendum-2026-10-22).
+> The dashboard below is still unimplemented; when it lands, it should reflect
+> the multi-executor topology (three whitelists, three trade DBs, per-family
+> expectancy, current evidence-scaled stake, and active strategy-gate entries),
+> not just the original single-BTC view.
+
 ## 1. Visual direction
 
 Use a dark, technical, data-dense trading dashboard similar in tone to the provided reference screenshots: nearly black canvas, charcoal left sidebar, bright readable labels, thin separators, minimal card borders, and restrained state colours. The UI should feel like a serious monitoring console rather than a marketing website.

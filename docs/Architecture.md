@@ -2,6 +2,15 @@
 
 **Version:** 0.2 · **Status:** Approved documentation direction; execution route unselected and Phase 0 not started.
 
+> **Implementation addendum (2026-10-22).** This document still describes the
+> *proposed contracts* (and remains accurate on those). The current **built**
+> state of the system — three disjoint order executors (daily / fast / swing),
+> a shared causal `families.py` library, an evidence-scaled sizing hook, an
+> auto-demoting strategy gate, and a 24/7 supervisor — is documented in
+> [`Audit_2026-10-22.md`](Audit_2026-10-22.md) and the top-level
+> [`README.md`](../README.md). Where the two differ, the audit + README reflect
+> what actually runs; this file describes the design intent it was built from.
+
 [Phases.md](Phases.md) owns task status, evidence, and phase approvals. This document defines proposed contracts; it does not certify a working integration.
 
 ## 1. Architectural principles
@@ -212,3 +221,94 @@ Keep generated databases, credentials, datasets, and model artifacts out of sour
 - Keep HMM and LSTM dependencies absent until their experiments are authorized and compatibility is checked.
 - Record actual start/test/backtest/recovery commands after verification. A browser check of markdown is not an application runtime test.
 - The owner requested commits and pushes to `https://github.com/VishalRajExe/bot.git`; stage only approved work, preserve remote history, and never force-push or include secrets. Report blocked authentication/history decisions instead of overwriting them.
+
+---
+
+## 9. Implementation addendum (2026-10-22)
+
+Sections 1-8 remain the *proposed contracts*. The following records what was
+actually built across the owner-approved multi-asset / multi-strategy /
+self-learning expansion, and supersedes any "not started" reading of this
+document.
+
+### 9.1 Executor topology
+
+Three **disjoint** order executors run as separate Freqtrade processes against
+Alpaca PAPER. Disjointness is a hard invariant verified by
+`app/risk/policy.validate_executors` at every preflight:
+
+| Executor | TF | Strategy class                | Pairs                                            | Stake | max_open |
+|----------|----|-------------------------------|--------------------------------------------------|-------|----------|
+| daily    | 1d | PaperAutonomous → BtcZScore    | BTC/USD                                          | $15   | 1        |
+| fast     | 5m | MomentumAlt → FamilyDispatcher | ETH, XRP, DOT, LINK, SOL, UNI (/USD)             | $10   | 2        |
+| swing    | 1h | SwingAlt → FamilyDispatcher   | LTC, AVAX, DOGE (/USD)                            | $10   | 1        |
+
+Each process only sees its own `tradesv3*.sqlite`. Global portfolio exposure is
+maintained through a cross-executor `app/state/open_exposure.json` ledger written
+by the read-only monitor and consulted by every `confirm_trade_entry` — the cap
+stays **global**, not per-process, and fails-closed if the ledger is stale.
+
+### 9.2 Signal library
+
+The `families.py` module holds the pure, causal signal math for four families:
+`momentum_ema_vol`, `rsi_divergence`, `bb_squeeze`, `link_trend`. The
+`FamilyDispatcher` (5m + 1h) resolves each pair's family from
+`app/configs/strategy_registry.json` and delegates indicator / entry / exit
+computation to those functions. **The BTC baseline (`BtcZScore`) is untouched**
+— `PaperAutonomous` subclasses it and only overrides the *alt* branch.
+
+### 9.3 Risk policy layer
+
+Single independent authority (`app/risk/policy.py`) + one veto implementation
+(`PaperAutonomous.confirm_trade_entry`, inherited verbatim by every other
+strategy class). Bounds applied per entry:
+
+- Per-pair `max_stake_usd` from the registry.
+- Evidence-scaled sizing: `m = clamp(1 + 0.5·avg_R, 1.0, 2.0)`, only after
+  `n ≥ N_MIN = 20` closed trades; the scaled stake is additionally clamped to
+  `cap × MAX_EVIDENCE_SCALE` (defence-in-depth against a corrupt `perf.json`).
+- Per-position hard ceiling: `≤ 20% × current_paper_equity` (step 6b).
+- Global portfolio exposure: `min($105 fixed, 40% × equity)`.
+- One position per pair + duplicate-order defense.
+- Fresh broker equity + fresh cross-executor ledger (both fail-closed).
+- Persisted circuit-breaker kill switch (daily loss / peak-to-trough DD).
+- Strategy-gate demotion: `is_tradeable(pair)` returns False while a pair
+  appears in `app/state/strategy_gate.json`.
+
+### 9.4 Learning layer
+
+- `app/learn/perf.py` — pure metrics (`summarize`, `by_pair_family`,
+  `should_demote`, `size_multiplier`). All values fail-closed at `n=0` (never
+  a fabricated 0).
+- `app/learn/journal.py` — durable `trade_journal` table; one row per closed
+  `paper_trades` entry with pair / family / R-multiple / PnL.
+- `app/scripts/learner.py` — read-only runner that writes `perf.json` and
+  appends to `strategy_gate.json`. **Auto-demote is allowed; auto-promote is
+  not** — a demotion can only be reversed by an owner edit.
+
+### 9.5 Supervisor
+
+`app/scripts/supervise.py` runs the monitor + learner + executor children as
+detached process groups. Restarts them with a `5 → 10 → 30 → 60 s` backoff
+ladder. **Never** relaunches an order executor while `policy.is_blocked()` is
+True — it sends a throttled Telegram alert instead, so a crash-loop cannot
+silently bypass the safety layer.
+
+### 9.6 Backtest path
+
+Freqtrade 2026.9 cannot backtest against Alpaca (private market-metadata load
+fails offline). All backtests run against the public Binance **USDT** proxy
+via `config.research.binance.json`; `ResearchFamily` binds `families.py` directly
+(no registry / no veto) so offline runs are not blocked by the production
+fail-closed layer. This is *signal-quality ranking*, **not** execution parity
+— the ranking feeds the registry, never the order path.
+
+### 9.7 Verification snapshot
+
+- 184 tests pass under `pytest app/tests/`.
+- `python app/scripts/preflight.py` → `TRADING READY: True` across all three
+  executors; disjoint pair sets; global $105 structural cap, $40 runtime cap on
+  $100 equity; summed `max_open_trades = 4 = max_concurrent_positions`.
+
+The rest of this file remains as the original proposal. Read it alongside
+[`Audit_2026-10-22.md`](Audit_2026-10-22.md) for the authoritative current state.

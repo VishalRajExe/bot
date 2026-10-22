@@ -7,6 +7,16 @@
 **Existing local engine checkout shown by the owner:** `D:\BOT\freqtrade-stable`  
 **Dashboard working name:** Regime Trader / UnboundBot
 
+> **Implementation note (2026-10-22).** The system has been built well beyond
+> the single-BTC first release described below. Current authoritative state:
+> [Audit_2026-10-22.md](Audit_2026-10-22.md) and the top-level
+> [README.md](../README.md). The reframed objective (owner-approved expansion
+> plan 2026-10-22) is *"Maximize risk-adjusted expectancy under hard safety
+> caps and keep learning continuously. PAPER ONLY. No profit / `$`-target."*
+> The multi-asset rollout adds five additional alts and three swing names via
+> three disjoint executors (daily / fast / swing) — the original first-release
+> framing below is preserved as history, not as current scope.
+
 ## 1. Product summary
 
 UnboundBot is a customizable Bitcoin spot-trading system built alongside the existing Freqtrade codebase. The goal is to retain as much proven Freqtrade infrastructure as practical while adding the owner's strategy, regime analysis, risk controls, post-trade memory, controlled research loop, and a custom monitoring dashboard.
