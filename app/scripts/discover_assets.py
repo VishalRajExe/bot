@@ -85,8 +85,33 @@ def fetch_available_crypto(hdrs: dict) -> tuple[list[dict], str]:
     return assets, "OK"
 
 
+def _parse_bars_into(out: dict[str, dict], bars_map: dict) -> None:
+    """Fold one /bars response into ``out`` (shared by the batch + retry passes)."""
+    for sym, bars in (bars_map or {}).items():
+        bars = bars[-BARS_LIMIT:] if bars else bars
+        if not bars:
+            out.setdefault(sym, {"bars": 0, "median_notional": 0.0, "last_close": None})
+            continue
+        # traded value per bar = vwap * base volume (falls back to close * volume)
+        notionals = sorted(
+            float(b.get("vw") or b.get("c", 0)) * float(b.get("v", 0)) for b in bars
+        )
+        mid = notionals[len(notionals) // 2] if notionals else 0.0
+        out[sym] = {
+            "bars": len(bars),
+            "median_notional": round(mid, 2),
+            "last_close": bars[-1].get("c"),
+        }
+
+
 def fetch_bars_notional(hdrs: dict, symbols: list[str]) -> dict[str, dict]:
-    """Batched 30d daily bars -> {symbol: {bars, median_notional, last_close}}."""
+    """Batched 30d daily bars -> {symbol: {bars, median_notional, last_close}}.
+
+    Alpaca's free crypto feed intermittently OMITS symbols from a batched /bars
+    response, which previously dropped actively-traded pairs (e.g. XRP/USD) from
+    the report entirely. After the batched pass we retry every still-missing (or
+    zero-bar) symbol individually so the artifact is complete and stable.
+    """
     out: dict[str, dict] = {}
     start = (datetime.now(timezone.utc) - timedelta(days=BARS_LIMIT + 3)).strftime("%Y-%m-%dT%H:%M:%SZ")
     for i in range(0, len(symbols), BATCH_SYMBOLS):
@@ -98,23 +123,27 @@ def fetch_bars_notional(hdrs: dict, symbols: list[str]) -> dict[str, dict]:
             timeout=30,
         )
         r.raise_for_status()
-        bars_map = r.json().get("bars", {}) or {}
-        for sym, bars in bars_map.items():
-            bars = bars[-BARS_LIMIT:] if bars else bars
-            if not bars:
-                out[sym] = {"bars": 0, "median_notional": 0.0, "last_close": None}
-                continue
-            # traded value per bar = vwap * base volume (falls back to close * volume)
-            notionals = sorted(
-                float(b.get("vw") or b.get("c", 0)) * float(b.get("v", 0)) for b in bars
-            )
-            mid = notionals[len(notionals) // 2] if notionals else 0.0
-            out[sym] = {
-                "bars": len(bars),
-                "median_notional": round(mid, 2),
-                "last_close": bars[-1].get("c"),
-            }
+        _parse_bars_into(out, r.json().get("bars", {}))
         time.sleep(0.2)  # be polite to the free data tier
+
+    # --- retry pass: individually fetch symbols the batch omitted ---------------
+    for attempt in range(3):
+        missing = [s for s in symbols if out.get(s, {}).get("bars", 0) == 0]
+        if not missing:
+            break
+        for sym in missing:
+            try:
+                r = requests.get(
+                    f"{DATA_BASE}/v1beta3/crypto/us/bars",
+                    headers=hdrs,
+                    params={"symbols": sym, "timeframe": "1D", "start": start},
+                    timeout=20,
+                )
+                if r.status_code == 200:
+                    _parse_bars_into(out, r.json().get("bars", {}))
+            except Exception:  # noqa: BLE001 - best-effort completeness retry
+                pass
+            time.sleep(0.1)
     return out
 
 

@@ -3,6 +3,25 @@
     {
       "available": true,
       "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 874835.18,
+      "name": "USDC/USD pair",
+      "proposed_candidate": true,
+      "spread_pct": 0.051,
+      "symbol": "USDC/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
       "baseline": true,
       "cost_verified": true,
       "eligible": true,
@@ -15,7 +34,7 @@
       "median_notional_usd": 129797.04,
       "name": "Bitcoin  / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.0336,
+      "spread_pct": 0.0191,
       "symbol": "BTC/USD",
       "taker_fee_pct": 0.25
     },
@@ -31,10 +50,10 @@
         "data_quality": true,
         "liquid": true
       },
-      "median_notional_usd": 35636.79,
+      "median_notional_usd": 33342.46,
       "name": "Ethereum / US Dollar",
       "proposed_candidate": true,
-      "spread_pct": 0.029,
+      "spread_pct": 0.0328,
       "symbol": "ETH/USD",
       "taker_fee_pct": 0.25
     },
@@ -50,11 +69,30 @@
         "data_quality": true,
         "liquid": true
       },
-      "median_notional_usd": 27228.39,
+      "median_notional_usd": 27226.12,
       "name": "Ripple / US Dollar",
       "proposed_candidate": true,
-      "spread_pct": 0.2527,
+      "spread_pct": 0.3826,
       "symbol": "XRP/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 27049.15,
+      "name": "Solana / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.0954,
+      "symbol": "SOL/USD",
       "taker_fee_pct": 0.25
     },
     {
@@ -72,8 +110,27 @@
       "median_notional_usd": 20802.66,
       "name": "USD Tether / US Dollar",
       "proposed_candidate": true,
-      "spread_pct": 0.1234,
+      "spread_pct": 0.1131,
       "symbol": "USDT/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": true,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": true
+      },
+      "median_notional_usd": 11748.65,
+      "name": "Uniswap / US Dollar",
+      "proposed_candidate": true,
+      "spread_pct": 0.2052,
+      "symbol": "UNI/USD",
       "taker_fee_pct": 0.25
     },
     {
@@ -91,7 +148,7 @@
       "median_notional_usd": 10317.65,
       "name": "Avalanche / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.5485,
+      "spread_pct": 0.6389,
       "symbol": "AVAX/USD",
       "taker_fee_pct": 0.25
     },
@@ -107,29 +164,10 @@
         "data_quality": true,
         "liquid": true
       },
-      "median_notional_usd": 7986.8,
-      "name": "Polkadot / US Dollar",
-      "proposed_candidate": true,
-      "spread_pct": 0.1634,
-      "symbol": "DOT/USD",
-      "taker_fee_pct": 0.25
-    },
-    {
-      "available": true,
-      "bars_30d": 30,
-      "baseline": false,
-      "cost_verified": true,
-      "eligible": true,
-      "enabled": false,
-      "gates": {
-        "cost": true,
-        "data_quality": true,
-        "liquid": true
-      },
-      "median_notional_usd": 7261.08,
+      "median_notional_usd": 6972.54,
       "name": "Chainlink / US Dollar",
       "proposed_candidate": true,
-      "spread_pct": 0.2246,
+      "spread_pct": 0.2048,
       "symbol": "LINK/USD",
       "taker_fee_pct": 0.25
     },
@@ -145,10 +183,48 @@
         "data_quality": true,
         "liquid": false
       },
-      "median_notional_usd": 6868.11,
+      "median_notional_usd": 6738.0,
+      "name": "Polkadot / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.1693,
+      "symbol": "DOT/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": false,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 5969.56,
+      "name": "Pax Gold / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.9215,
+      "symbol": "PAXG/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 5394.41,
       "name": "Cardano / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.3069,
+      "spread_pct": 0.3477,
       "symbol": "ADA/USD",
       "taker_fee_pct": 0.25
     },
@@ -164,29 +240,10 @@
         "data_quality": true,
         "liquid": false
       },
-      "median_notional_usd": 6012.44,
-      "name": "Pax Gold / US Dollar",
-      "proposed_candidate": false,
-      "spread_pct": 1.1001,
-      "symbol": "PAXG/USD",
-      "taker_fee_pct": 0.25
-    },
-    {
-      "available": true,
-      "bars_30d": 30,
-      "baseline": false,
-      "cost_verified": true,
-      "eligible": false,
-      "enabled": false,
-      "gates": {
-        "cost": false,
-        "data_quality": true,
-        "liquid": false
-      },
-      "median_notional_usd": 4277.37,
+      "median_notional_usd": 3970.05,
       "name": "Litecoin / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.601,
+      "spread_pct": 0.5625,
       "symbol": "LTC/USD",
       "taker_fee_pct": 0.25
     },
@@ -202,10 +259,10 @@
         "data_quality": true,
         "liquid": false
       },
-      "median_notional_usd": 3811.5,
+      "median_notional_usd": 3788.44,
       "name": "Dogecoin / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.3053,
+      "spread_pct": 0.3497,
       "symbol": "DOGE/USD",
       "taker_fee_pct": 0.25
     },
@@ -224,8 +281,27 @@
       "median_notional_usd": 3497.13,
       "name": "Aave / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.1924,
+      "spread_pct": 0.2472,
       "symbol": "AAVE/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 21,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": false,
+        "liquid": false
+      },
+      "median_notional_usd": 3306.86,
+      "name": "USDG/USD pair",
+      "proposed_candidate": false,
+      "spread_pct": 0.002,
+      "symbol": "USDG/USD",
       "taker_fee_pct": 0.25
     },
     {
@@ -240,10 +316,10 @@
         "data_quality": true,
         "liquid": false
       },
-      "median_notional_usd": 3335.31,
+      "median_notional_usd": 3138.23,
       "name": "Bitcoin Cash / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.5745,
+      "spread_pct": 0.5928,
       "symbol": "BCH/USD",
       "taker_fee_pct": 0.25
     },
@@ -259,10 +335,10 @@
         "data_quality": true,
         "liquid": false
       },
-      "median_notional_usd": 2676.18,
+      "median_notional_usd": 2631.77,
       "name": "Ondo / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.4761,
+      "spread_pct": 0.4754,
       "symbol": "ONDO/USD",
       "taker_fee_pct": 0.25
     },
@@ -278,25 +354,1051 @@
         "data_quality": true,
         "liquid": false
       },
-      "median_notional_usd": 2398.29,
+      "median_notional_usd": 1693.69,
+      "name": "Pepe / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.2225,
+      "symbol": "PEPE/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": true,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 1638.82,
+      "name": "Arbitrum / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": 0.2794,
+      "symbol": "ARB/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 1555.01,
       "name": "Hype / US Dollar",
       "proposed_candidate": false,
-      "spread_pct": 0.4913,
+      "spread_pct": null,
       "symbol": "HYPE/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 1411.81,
+      "name": "The Graph / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "GRT/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 1266.9,
+      "name": "Basic Attention Token / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BAT/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 10,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": false,
+        "liquid": false
+      },
+      "median_notional_usd": 708.66,
+      "name": "Sky / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SKY/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 574.81,
+      "name": "Render / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "RENDER/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 534.32,
+      "name": "Curve / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "CRV/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 527.74,
+      "name": "Bonk / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BONK/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 512.36,
+      "name": "Filecoin / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "FIL/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 417.36,
+      "name": "Shiba Inu / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SHIB/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 379.08,
+      "name": "Lido DAO / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LDO/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 320.33,
+      "name": "dogwifhat / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "WIF/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 166.49,
+      "name": "SushiSwap / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SUSHI/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 165.21,
+      "name": "Trump / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "TRUMP/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 146.59,
+      "name": "Tezos / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "XTZ/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 56.74,
+      "name": "Yearn Finance / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "YFI/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 45.88,
+      "name": "Polygon / US Dollar",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "POL/USD",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "SushiSwap / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SUSHI/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Uniswap / Bitcoin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "UNI/BTC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 18,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": false,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "USD Tether / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "USDT/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Tezos / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "XTZ/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Yearn Finance / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "YFI/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Yearn Finance / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "YFI/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Chainlink / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LINK/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Litecoin / Bitcoin ",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LTC/BTC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Litecoin / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LTC/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Solana/USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SOL/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Ethereum / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "ETH/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Avalanche / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "AVAX/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Chainlink / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LINK/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "SushiSwap / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SUSHI/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Bitcoin Cash / Bitcoin ",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BCH/BTC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Shiba Inu / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SHIB/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Chainlink / Bitcoin ",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LINK/BTC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Uniswap / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "UNI/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Uniswap / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "UNI/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Bitcoin / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BTC/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Curve / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "CRV/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Aave / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "AAVE/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Shib USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SHIB/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Aave / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "AAVE/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Ethereum / Bitcoin ",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "ETH/BTC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Avalanche / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "AVAX/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Basic Attention Token / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BAT/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Bitcoin Cash / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BCH/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Bitcoin Cash / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BCH/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Bitcoin / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "BTC/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Dogecoin / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "DOGE/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Dogecoin / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "DOGE/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Polkadot / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "DOT/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Ethereum / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "ETH/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "The Graph / USD Coin",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "GRT/USDC",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Litecoin / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "LTC/USDT",
+      "taker_fee_pct": 0.25
+    },
+    {
+      "available": true,
+      "bars_30d": 30,
+      "baseline": false,
+      "cost_verified": false,
+      "eligible": false,
+      "enabled": false,
+      "gates": {
+        "cost": true,
+        "data_quality": true,
+        "liquid": false
+      },
+      "median_notional_usd": 0.0,
+      "name": "Solana / USD Tether",
+      "proposed_candidate": false,
+      "spread_pct": null,
+      "symbol": "SOL/USDT",
       "taker_fee_pct": 0.25
     }
   ],
   "counts": {
     "available": 73,
-    "eligible": 6,
+    "eligible": 8,
     "enabled": 0,
-    "proposed_candidates": 5
+    "proposed_candidates": 7
   },
-  "generated_at": "2026-10-21T08:49:35.369545+00:00",
+  "generated_at": "2026-10-22T06:17:22.672079+00:00",
   "policy": {
     "availability": "Alpaca tradable crypto asset list",
     "btc": "baseline strategy (kept separate from FVG/OB)",
-    "eligibility": ">= 25/30 daily bars AND top-25% notional (cutoff ~$7,261 median daily, relative because Alpaca's crypto volume feed is thin) AND verified spread <= 0.5%",
+    "eligibility": ">= 25/30 daily bars AND top-25% notional (cutoff ~$6,973 median daily, relative because Alpaca's crypto volume feed is thin) AND verified spread <= 0.5%",
     "enabling": "requires backtest + owner approval; script never enables"
   },
   "source": "Alpaca /v2/assets?asset_class=crypto + crypto bars/quotes (PAPER)"
