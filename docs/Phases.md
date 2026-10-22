@@ -343,6 +343,26 @@ Actual checks performed during this documentation-only step (no application, ins
 - [x] ACCEPT-07 Checklist, source context, phase reports, and Memory.md once created agree on actual progress. **EVIDENCE:** Phases.md register + Memory.md reconciled to code/test reality on 2026-10-21 (false-OK model corrected, strategy path fixed, backtest numbers updated).
 - [ ] ACCEPT-08 Each phase ends with a precise next action and explicit approval boundary. **PARTIAL:** remediation defines the next action (owner decision on paper restart + risk approval); full per-phase closeout records still use the template.
 
+## Process-lifecycle hardening (2026-10-22) — supervisor orphan fix
+
+- [x] PROC-01 A supervised process tree leaves no orphans on Windows, even when the
+  supervisor is force-killed. **EVIDENCE:** new `app/scripts/win_job.py` binds every
+  child to a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object (stdlib `ctypes`, no new
+  dependency), created `CREATE_SUSPENDED` → assigned → resumed so no descendant escapes;
+  `run_paper.py`'s `freqtrade.exe` grandchild inherits containment. `supervise.py`
+  fail-closes (refuses to start, exit 4) if containment is unavailable and now drains
+  gracefully on Ctrl+C with an idempotent per-child `stop()` + a job-close backstop.
+  Full write-up in `docs/Audit_2026-10-22.md` §11.3.
+- [x] PROC-02 Proven by real Windows process-lifecycle tests, not by killing the
+  production bot. **EVIDENCE:** `app/tests/test_win_job.py` — 8 Windows integration tests
+  (A graceful, B force-kill reaps child+grandchild, C descendant containment, D unrelated-
+  process safety, E assignment-failure fail-closed, F repeated shutdown, G restart no-duplicate,
+  H early-failure health) on harmless dummy processes, plus 4 portable unit tests; every test
+  force-cleans its own PIDs. `python -m pytest` → **199 passed** (was 187). Trading
+  strategy/risk/whitelist/order-execution are unchanged. Three pre-existing orphaned
+  read-only monitors were identified, documented, and stopped by exact PID (no order process
+  touched).
+
 ## Phase closeout record template
 
 Use this record for each completed/blocked phase, linked to task IDs. This template does not claim any phase is complete.

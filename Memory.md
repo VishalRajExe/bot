@@ -252,6 +252,33 @@ decisions/outcomes. Do not conflate the two.
   **149 passed**, and BOTH chains restarted so the daily BTC baseline and fast executor now run the patched code.
   **No profitability claim: one forced round trip at a −0.098% fee cost only proves exits settle.**
 
+- 2026-10-22 **WINDOWS SUPERVISOR ORPHAN-PROCESS FIX (Audit §11.3).** Root cause:
+  `supervise.py` launched every child in its own group (`CREATE_NEW_PROCESS_GROUP`) so
+  Ctrl+C would not cascade, but the `finally` drain only runs on a *graceful* exit — a
+  force-kill (`Stop-Process -Force`, Task Manager, crashed host shell) skipped it and
+  orphaned the children (and, because `run_paper.py` shells out to `freqtrade.exe`, the
+  whole executor *grandchild* tree). Reproduced live: 3 orphaned `crypto_status_monitor.py`
+  trees with all parents dead and no `supervise.py` running (cleaned by exact PID; read-only,
+  no orders). Fix = OS-level containment via **Windows Job Object** with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, implemented in **stdlib `ctypes` only** (no pywin32;
+  Job Objects aren't exposed by psutil) in new `app/scripts/win_job.py`: a `JobObject` wrapper,
+  a `ManagedProcess` handle, and `spawn()` that creates the child `CREATE_SUSPENDED |
+  CREATE_NEW_PROCESS_GROUP` → **assigns to the job while suspended → `ResumeThread`** (no
+  pre-assignment escape race), `bInheritHandles=FALSE` (job handle never inherited), no
+  breakaway (descendants incl. freqtrade inherit containment); any failure raises
+  `ContainmentError` and kills the half-created process (fail-closed). `supervise.py`: `_init_job`
+  at startup (Windows refuses to start, exit 4, if containment is unavailable), `spawn_managed`
+  routes Windows children through `win_job.spawn` (POSIX keeps the process-group fallback),
+  `Managed.start` fail-closes on `ContainmentError`, `Managed.stop` idempotent + returns a
+  status tag, `_drain` graceful-then-forced + `TerminateJobObject`/`CloseHandle` backstop, and a
+  read-only `_managed_cmdline_tokens` startup scan flags pre-existing workers (matched by script
+  path, never bare `python.exe`) and skips double-launch. Trading logic/strategy/risk/whitelist/
+  order-execution are UNCHANGED — this is pure process management. Tests: new
+  `app/tests/test_win_job.py` (8 Windows integration A–H on real *dummy* processes + 4 portable
+  unit) — never the production supervisor, no orders, no network; Test B force-kills a harness
+  supervisor and proves the OS reaps child+grandchild. **199 passed** (187 + 12). Graceful =
+  Ctrl+C→drain; forced = any kill → job-close tears down the tree.
+
 ## How to run
 - Automated tests (no creds/orders): `python -m pytest`  ·  one file: `python -m pytest app/tests/test_reconcile.py -v`
 - Backtest (BTC baseline, binance proxy): `freqtrade backtesting -c app/configs/config.research.binance.json --userdir app/user_data --strategy BtcZScore --timerange 20170817-20261019 --enable-protections` (or `python app/scripts/run_backtest.py`)
@@ -264,6 +291,7 @@ decisions/outcomes. Do not conflate the two.
 - Alpaca gate: `python app/scripts/check_alpaca.py`
 - Alpaca paper bot: `python app/scripts/run_paper.py` (injects keys from .env, dry_run=false → paper-api)
 - Alpaca paper FAST bot (5m momentum alts): `python app/scripts/run_paper.py --fast` (telegram off — monitor alerts both DBs)
+- Supervisor (24/7 watchdog, PAPER): `python app/scripts/supervise.py --only all`. On Windows every child is bound to a kill-on-close Job Object — stop gracefully with Ctrl+C (drains children), or force-kill the supervisor any way and the OS reaps the whole tree (no orphans). Refuses to start (exit 4) if containment is unavailable. Process-lifecycle tests: `python -m pytest app/tests/test_win_job.py -v`.
 - Autonomous per-asset Telegram monitor (READ-ONLY, no orders): `python app/scripts/crypto_status_monitor.py --interval 60 --heartbeat-minutes 60`  ·  kill-switch manual recovery after review: add `--recover-kill-switch`
 - Phase 8 HMM research (non-trading): `python app/research/hmm_regime.py` → artifacts + docs/Phase8_HMM_Report.md
 - Phase 10 reconcile (read-only mirror): `python app/scripts/reconcile.py`  ·  cadence: `python app/scripts/reconcile.py --watch 900`
