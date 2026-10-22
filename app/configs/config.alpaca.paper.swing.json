@@ -20,9 +20,12 @@
     "key": "",
     "secret": "",
     "_secrets_note": "Keys are injected at runtime from D:\\BOT\\.env via FREQTRADE__EXCHANGE__KEY/SECRET by app/scripts/run_paper.py --swing. Never hardcode here (this file is committed).",
-    "_ft_has_note": "Alpaca is not a Freqtrade-native exchange; its ccxt fetch_ohlcv returns ONLY the current partial bar without a 'since' timestamp. ohlcv_require_since=true forces the historic-fetch path so the full 1h history needed for BB(20)/squeeze-quantile(100)/EMA55/ADX warm-up is returned.",
+    "_ft_has_note": "Alpaca is not a Freqtrade-native exchange; its ccxt fetch_ohlcv returns ONLY the current partial bar without a 'since' timestamp. ohlcv_require_since=true forces the historic-fetch path. Alpaca's crypto bars endpoint additionally caps each response to ~167 rows for 1h regardless of the caller's 'limit', and ccxt.alpaca does not paginate for Freqtrade, so the default ohlcv_candle_limit=500 makes the initial since land ~21 days back and the returned page ends ~10 days ago (never reaches NOW). Pin ohlcv_candle_limit_per_timeframe to 144 for 1h so the initial since = NOW-6d and the response covers current. Empirical repro in docs/Audit_2026-10-22.md sec.11.1.",
     "_ft_has_params": {
-      "ohlcv_require_since": true
+      "ohlcv_require_since": true,
+      "ohlcv_candle_limit_per_timeframe": {
+        "1h": 144
+      }
     },
     "ccxt_config": {
       "urls": {

@@ -173,3 +173,47 @@ def test_other_executor_exposure_counts_toward_global_cap(veto):
     obj = _new()
     assert obj.confirm_trade_entry("BTC/USD", "market", 0.06, 80000.0, "GTC",
                                    datetime.now(timezone.utc), "t", "long") is False
+
+
+# --- Alpaca OHLCV page-cap regression -------------------------------------
+# Empirically (docs/Audit_2026-10-22.md sec.11.1) ccxt.alpaca's fetch_ohlcv
+# response for 1h crypto bars caps around 167 rows per request regardless
+# of the caller's `limit`, and Freqtrade's `ohlcv_require_since` code path
+# does not paginate. Any strategy whose startup_candle_count exceeds the
+# page cap at that timeframe leaves the live OHLCV cache permanently stuck
+# at "since + page" in the past, so no fresh signal can ever fire.
+#
+# The probe table shows the boundary is 144 (= 6 × 24 h at 1h) for "data
+# reaches NOW"; 167 rows just barely reaches NOW − 1 h (partial-bar lag).
+# We assert against 144 so the fix is genuinely safe, not just under a cap.
+ALPACA_1H_FRESH_UNTIL_ROWS = 144
+
+
+def test_swing_alt_startup_candle_fits_alpaca_1h_page_cap():
+    from SwingAlt import SwingAlt
+    assert SwingAlt.timeframe == "1h"
+    assert SwingAlt.startup_candle_count <= ALPACA_1H_FRESH_UNTIL_ROWS, (
+        f"SwingAlt.startup_candle_count={SwingAlt.startup_candle_count} exceeds "
+        f"the safe Alpaca 1h fresh-data page boundary ({ALPACA_1H_FRESH_UNTIL_ROWS}); "
+        f"the swing executor's live OHLCV cache will freeze at a stale 'last tick' "
+        f"and never fire an entry. See docs/Audit_2026-10-22.md §11.1."
+    )
+
+
+def test_swing_alt_startup_candle_covers_family_warmup():
+    from SwingAlt import SwingAlt
+    # bb_squeeze family needs at least bb_period(20) + squeeze_lookback(100)
+    # + buffer. 168 gives ~48 bars of headroom over the 120-bar hard need.
+    assert SwingAlt.startup_candle_count >= 120, (
+        "SwingAlt startup_candle_count below 120 will produce NaN indicators "
+        "on the bb_squeeze / rsi_divergence warmup path."
+    )
+
+
+def test_fast_alt_startup_candle_fits_alpaca_5m_page_cap():
+    from MomentumAlt import MomentumAlt
+    # 5m bars also cap at ~500 rows per request from Alpaca; MomentumAlt's
+    # startup=200 is safely inside. Pinned here so a future bump that pushes
+    # it above the page cap gets caught by this test, not by an outage.
+    assert MomentumAlt.timeframe == "5m"
+    assert MomentumAlt.startup_candle_count <= 500

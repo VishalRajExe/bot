@@ -35,8 +35,24 @@ class SwingAlt(FamilyDispatcher):
     exit_profit_only = False
     ignore_roi_if_entry_signal = False
     process_only_new_candles = True
-    # ~16 days of 1h history — converges BB(20) + the 100-bar squeeze quantile and EMA55/ADX.
-    startup_candle_count = 400
+    # Warm-up covers BB(20) + the 100-bar squeeze quantile + EMA55 + ADX(14) +
+    # vol_window(20). Max lookback needed is ~120 bars; 168 gives comfortable
+    # headroom AND stays inside a hard external constraint:
+    #
+    # Alpaca's crypto data endpoint caps each `fetch_ohlcv` response for 1h
+    # bars to ~167 rows regardless of the caller's `limit`, and ccxt.alpaca
+    # does not paginate for Freqtrade's `ohlcv_require_since` code path. Any
+    # `startup_candle_count > 168` at 1h asks for a window that spans more
+    # than one page, so the fetch returns bars that END ~10 days ago and
+    # Freqtrade's live cache is stuck at the same stale "last tick" every
+    # iteration. Empirically verified 2026-10-22 — see docs/Audit_2026-10-22.md §11.1.
+    #
+    # 144 = 6 × 24 h at 1h — the largest value empirically guaranteed to
+    # return data through "now" in one Alpaca request (see docs/Audit_2026-10-22.md
+    # §11.1 probe table). 167 rows would just reach NOW-1h (partial-bar lag),
+    # and 168+ rows spills past the page cap. 144 comfortably exceeds the ~120-bar
+    # warm-up need and stays 23 rows under the safe page boundary.
+    startup_candle_count = 144
 
     @property
     def protections(self):
