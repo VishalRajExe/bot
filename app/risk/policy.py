@@ -27,7 +27,16 @@ STATE = APP / "state"
 POLICY_PATH = CONFIGS / "paper_risk_policy.json"
 REGISTRY_PATH = CONFIGS / "strategy_registry.json"
 
+# Phase D learning-loop constants (owner-approved plan §3). Kept here so the veto,
+# the sizing hook and the learn runner share ONE source of truth. MAX_EVIDENCE_SCALE
+# mirrors learn.perf.SCALE_MAX; enforced independently so a bad perf.json can never
+# silently raise a stake beyond 2x the approved per-pair cap.
+MAX_EVIDENCE_SCALE = 2.0
+PER_POSITION_PCT_EQUITY = 0.20
+
 _cache: dict[str, dict] = {}
+_perf_cache: dict[str, object] = {"path": None, "mtime": None, "data": {}}
+_gate_cache: dict[str, object] = {"path": None, "mtime": None, "data": {}}
 
 
 def _load(path: Path) -> dict:
@@ -48,6 +57,8 @@ def registry() -> dict:
 
 def reload_all() -> None:
     _cache.clear()
+    _perf_cache.update({"path": None, "mtime": None, "data": {}})
+    _gate_cache.update({"path": None, "mtime": None, "data": {}})
 
 
 # --------------------------------------------------------------------------- pairs
@@ -57,7 +68,13 @@ def pair_entry(pair: str) -> dict:
 
 def is_tradeable(pair: str) -> bool:
     e = pair_entry(pair)
-    return bool(e.get("tradeable")) and e.get("status") in ("ACTIVE_BASELINE", "EXPERIMENTAL_PAPER")
+    if not (bool(e.get("tradeable")) and e.get("status") in ("ACTIVE_BASELINE", "EXPERIMENTAL_PAPER")):
+        return False
+    # Phase D strategy gate: a pair/family that has accumulated a NEGATIVE after-fee
+    # expectancy (n>=N_min) is auto-demoted (no new live orders) until the owner
+    # re-approves via a fresh backtest. is_demoted() defaults to False when the gate
+    # file is absent, so this is inert on a young account / clean checkout.
+    return not is_demoted(pair)
 
 
 def tradeable_pairs() -> list[str]:
@@ -103,8 +120,14 @@ def stoploss_fraction(pair: str) -> float | None:
 
 
 def stake_for_pair(pair: str, proposed_stake: float) -> float | None:
-    """Bounded stake = min(proposed, per-pair cap, loss_cap/stop_distance). Returns None if
-    the risk cannot be computed (caller must fail-closed)."""
+    """Bounded stake = min(proposed, per-pair cap, loss_cap/stop_distance), then scaled
+    by the evidence multiplier m in [1.0, MAX_EVIDENCE_SCALE] (defaults to 1.0 when the
+    learning layer has not accumulated enough closed trades yet, so this is byte-for-
+    byte identical to the pre-Phase-D behavior on a young account). Scaled stake is
+    additionally clamped to ``cap * MAX_EVIDENCE_SCALE`` so a corrupted perf.json can
+    never raise it more than 2x. The 20%-equity per-position ceiling is enforced in
+    ``PaperAutonomous.confirm_trade_entry`` where the fresh equity is available.
+    Returns None if the risk cannot be computed (caller must fail-closed)."""
     cap = max_stake_usd(pair)
     if cap is None:
         return None
@@ -113,6 +136,9 @@ def stake_for_pair(pair: str, proposed_stake: float) -> float | None:
     stop = stoploss_fraction(pair)
     if max_loss is not None and stop and stop > 0:
         stake = min(stake, max_loss / stop)
+    m = evidence_multiplier(pair)
+    if m and m > 1.0:
+        stake = min(stake * float(m), cap * MAX_EVIDENCE_SCALE)
     return float(stake)
 
 
@@ -229,6 +255,74 @@ def rejections_path() -> Path:
 
 def open_exposure_path() -> Path:
     return _state_path("open_exposure", "app/state/open_exposure.json")
+
+
+def perf_path() -> Path:
+    return _state_path("perf", "app/state/perf.json")
+
+
+def strategy_gate_path() -> Path:
+    return _state_path("strategy_gate", "app/state/strategy_gate.json")
+
+
+def _read_json_cached(path: Path, cache: dict) -> dict:
+    """Read a small state JSON with mtime-based caching so the veto path (called on
+    every potential entry) does not hammer the disk. Missing file -> {} (fail-open on
+    the *learning* side only: sizing stays at m=1 and no pair is demoted). A corrupt
+    file is treated as missing — callers must never trust a bad stat as an edge."""
+    try:
+        p = Path(path)
+        if not p.exists():
+            data = {}
+            mtime = None
+        else:
+            mtime = p.stat().st_mtime
+            if cache.get("path") == str(p) and cache.get("mtime") == mtime:
+                return cache.get("data") or {}
+            data = json.loads(p.read_text(encoding="utf-8"))
+        cache["path"] = str(p)
+        cache["mtime"] = mtime
+        cache["data"] = data
+        return data
+    except Exception:  # noqa: BLE001
+        cache["path"] = str(path)
+        cache["mtime"] = None
+        cache["data"] = {}
+        return {}
+
+
+def evidence_multiplier(pair: str) -> float:
+    """Return m in [1.0, MAX_EVIDENCE_SCALE] for ``pair`` from the learning layer.
+    Looks up the pair's ACTIVE family in the registry, then its per-(pair|family)
+    stats in app/state/perf.json, and delegates to learn.perf.size_multiplier.
+    Returns exactly 1.0 (no change) when the perf file is absent, malformed, or the
+    pair has fewer than N_MIN closed trades — a young account is never scaled."""
+    perf = _read_json_cached(perf_path(), _perf_cache)
+    if not perf:
+        return 1.0
+    fam = pair_entry(pair).get("strategy_family") or ""
+    key = f"{pair}|{fam}"
+    stats = (perf.get("by_pair_family") or {}).get(key)
+    if not stats:
+        return 1.0
+    try:
+        from learn import perf as _perf
+    except Exception:  # noqa: BLE001
+        return 1.0
+    m = _perf.size_multiplier(stats)
+    # Defence-in-depth: clamp to the policy-declared ceiling even if perf.json is stale.
+    return float(min(max(m, 1.0), MAX_EVIDENCE_SCALE))
+
+
+def is_demoted(pair: str) -> bool:
+    """True when the Phase D strategy gate has demoted ``pair`` (auto from a negative
+    expectancy at n>=N_min, or manual owner demotion). Missing/empty gate -> False.
+    Auto-promotion is NOT allowed; only owner re-approval clears an entry."""
+    gate = _read_json_cached(strategy_gate_path(), _gate_cache)
+    if not gate:
+        return False
+    demoted = gate.get("demoted") or []
+    return any((d.get("pair") == pair) for d in demoted)
 
 
 def is_blocked() -> dict:

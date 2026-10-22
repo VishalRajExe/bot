@@ -150,15 +150,29 @@ class PaperAutonomous(BtcZScore):
         if cap is None:
             return self._reject(pair, "RISK_UNCALCULABLE", "no bounded stake cap for pair", ctx)
         notional = float(amount) * float(rate)
-        # 5. per-position cap (defence-in-depth over custom_stake).
-        if notional > cap * 1.05 + 1e-6:
+        # 5. per-position cap (defence-in-depth over custom_stake). Base cap is the
+        # registry per-pair max_stake_usd; the owner-approved plan lets the evidence-
+        # scaled multiplier grow a stake up to MAX_EVIDENCE_SCALE (2x) the base cap,
+        # so the pre-scaling ceiling is cap * MAX_EVIDENCE_SCALE (still with a 5% float).
+        ceiling = cap * policy.MAX_EVIDENCE_SCALE
+        if notional > ceiling * 1.05 + 1e-6:
             ctx["cap"] = cap
-            return self._reject(pair, "PER_POSITION_CAP", f"notional {notional:.2f} > per-position cap {cap:.2f}", ctx)
+            ctx["ceiling"] = ceiling
+            return self._reject(pair, "PER_POSITION_CAP", f"notional {notional:.2f} > per-position ceiling {ceiling:.2f} (base {cap:.2f} x {policy.MAX_EVIDENCE_SCALE})", ctx)
         # 6. equity snapshot (fresh) required for the exposure cap -> fail-closed.
         eq = policy.get_equity()
         equity = eq.get("equity")
         if not eq or eq.get("_stale") or equity is None:
             return self._reject(pair, "STALE_OR_UNKNOWN_EQUITY", "cannot size portfolio exposure without a fresh equity snapshot", ctx)
+        # 6b. Phase D hard per-position ceiling: never more than 20% of equity in a
+        # single pair, regardless of evidence scaling or the fixed per-pair cap. This
+        # is the plan's §3 protection so a growing account cannot have one bad trade
+        # take out a material fraction of capital. Fail-closed: no equity -> rejected
+        # at step 6 above; here equity is guaranteed non-None.
+        per_pos_hard = float(policy.PER_POSITION_PCT_EQUITY) * float(equity)
+        if notional > per_pos_hard + 1e-6:
+            ctx.update({"per_pos_hard": per_pos_hard, "pct_equity": policy.PER_POSITION_PCT_EQUITY})
+            return self._reject(pair, "PER_POSITION_PCT_EQUITY", f"notional {notional:.2f} > {policy.PER_POSITION_PCT_EQUITY:.0%} equity ceiling {per_pos_hard:.2f}", ctx)
         # 7. one position per pair + no unresolved open trade for this pair.
         from freqtrade.persistence import Trade
         opens = Trade.get_trades_proxy(is_open=True)

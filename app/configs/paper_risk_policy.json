@@ -51,7 +51,9 @@
     "equity": "app/state/equity.json",
     "risk_rejections": "app/state/risk_rejections.json",
     "open_exposure": "app/state/open_exposure.json",
-    "trade_review": "app/state/trade_review.json"
+    "trade_review": "app/state/trade_review.json",
+    "perf": "app/state/perf.json",
+    "strategy_gate": "app/state/strategy_gate.json"
   },
   "executors": {
     "note": "Three DISJOINT PAPER order executors are CONFIGURED (multi-asset expansion, owner-approved plan 2026-10-22). 'daily' = BTC baseline only (1d Z-score, stake 15, max 1). 'fast' = LIVE-STRICT alts ETH/XRP/DOT/LINK/SOL/UNI (5m dispatcher, 10 each, max 2 open). 'swing' = PAPER-RELAXED wide-spread names LTC/AVAX/DOGE (1h cost-aware dispatcher, 10 each, max 1 open); its eligibility gate is relaxed per the owner-approved plan (spread > 0.5% / thin) but the cost-aware -6% stop sits well beyond the ~1.1% round-trip cost. Each Freqtrade process only sees its own trade DB, so the read-only monitor writes app/state/open_exposure.json (aggregating ALL THREE) and every confirm_trade_entry adds the OTHER executors' open stake before the exposure-cap check (fail-closed if the ledger is stale) — the $40 (min of $105 / 40%-equity) cap stays global, not per-process. Pair sets are disjoint. Structural worst case = BTC 15 + fast 6x10 + swing 3x10 = 105 <= fixed cap 105; positions 1 + 2 + 1 = 4 <= max_concurrent 4; runtime open exposure additionally bounded to ~$40 by the 40%-equity rule. NOTE: BTC stake is 15 (not 10) because Alpaca enforces a ~$15 minimum order notional on BTC/USD; alt/swing stakes are 10 (all fractionable with tiny base minimums). Only the daily executor is STARTED first; fast and swing stay configured but running=false until the $100 daily path is verified.",

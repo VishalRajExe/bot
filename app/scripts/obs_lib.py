@@ -83,6 +83,12 @@ CREATE TABLE IF NOT EXISTS reports (
     ts TEXT PRIMARY KEY, window_start TEXT, window_end TEXT,
     path TEXT, summary TEXT
 );
+CREATE TABLE IF NOT EXISTS trade_journal (
+    id INTEGER PRIMARY KEY, pair TEXT, family TEXT, timeframe TEXT,
+    stake REAL, fee_cost REAL, r REAL, pnl REAL,
+    open_date TEXT, close_date TEXT, exit_reason TEXT, enter_tag TEXT,
+    features TEXT, updated_at TEXT
+);
 """
 
 
